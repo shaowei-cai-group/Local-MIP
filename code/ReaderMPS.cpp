@@ -203,41 +203,46 @@ void ReaderMPS::Read(
       else
         continue;
     iss >> inputBound;
-    auto &var = modelVarUtil->GetVar(varName);
-    if (var.type == VarType::Binary)
+    if (modelVarUtil->name2idx.find(varName) != modelVarUtil->name2idx.end())
     {
-      var.SetType(VarType::Integer);
-      var.SetUpperBound(InfiniteUpperBound);
+      auto &var = modelVarUtil->GetVar(varName);
+      if (var.type == VarType::Binary)
+      {
+        var.SetType(VarType::Integer);
+        var.SetUpperBound(InfiniteUpperBound);
+      }
+      if (varType == "UP")
+        var.SetUpperBound(inputBound);
+      else if (varType == "LO")
+        var.SetLowerBound(inputBound);
+      else if (varType == "BV")
+      {
+        var.SetType(VarType::Binary);
+        var.SetUpperBound(1.0);
+        var.SetLowerBound(0.0);
+      }
+      else if (varType == "LI")
+        var.SetLowerBound(inputBound);
+      else if (varType == "UI")
+        var.SetUpperBound(inputBound);
+      else if (varType == "FX")
+      {
+        var.SetLowerBound(inputBound);
+        var.SetUpperBound(inputBound);
+        var.SetType(VarType::Fixed);
+      }
+      else if (varType == "FR")
+      {
+        var.SetUpperBound(InfiniteUpperBound);
+        var.SetLowerBound(InfiniteLowerBound);
+      }
+      else if (varType == "MI")
+        var.SetLowerBound(InfiniteLowerBound);
+      else if (varType == "PL")
+        var.SetUpperBound(InfiniteUpperBound);
     }
-    if (varType == "UP")
-      var.SetUpperBound(inputBound);
-    else if (varType == "LO")
-      var.SetLowerBound(inputBound);
-    else if (varType == "BV")
-    {
-      var.SetType(VarType::Binary);
-      var.SetUpperBound(1.0);
-      var.SetLowerBound(0.0);
-    }
-    else if (varType == "LI")
-      var.SetLowerBound(inputBound);
-    else if (varType == "UI")
-      var.SetUpperBound(inputBound);
-    else if (varType == "FX")
-    {
-      var.SetLowerBound(inputBound);
-      var.SetUpperBound(inputBound);
-      var.SetType(VarType::Fixed);
-    }
-    else if (varType == "FR")
-    {
-      var.SetUpperBound(InfiniteUpperBound);
-      var.SetLowerBound(InfiniteLowerBound);
-    }
-    else if (varType == "MI")
-      var.SetLowerBound(InfiniteLowerBound);
-    else if (varType == "PL")
-      var.SetUpperBound(InfiniteUpperBound);
+    else
+      continue;
   }
   infile.close();
   for (conIdx = 1; conIdx < modelConUtil->conSet.size(); ++conIdx)
