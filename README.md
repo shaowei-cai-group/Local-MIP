@@ -1,7 +1,7 @@
 # Local-MIP
 **A standalone local search solver for general mixed integer programming**
 
-**Author: Peng Lin, Mengchuan Zou, Shaowei Cai**
+**Author: Peng Lin, Mengchuan Zou, and Shaowei Cai\***
 
 ## Run
 ```
