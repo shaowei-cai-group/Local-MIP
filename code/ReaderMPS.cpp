@@ -259,8 +259,7 @@ void ReaderMPS::Read(
   modelConUtil->conNum = modelConUtil->conSet.size();
   modelVarUtil->varNum = modelVarUtil->varSet.size();
 
-  TightenBound();
-  if (!TightBoundGlobally())
+  if (!TightenBound() || !TightBoundGlobally())
   {
     printf("c model is infeasible.\n");
     exit(-1);
@@ -296,14 +295,30 @@ void ReaderMPS::PushCoeffVarIdx(
   con.posInVar.push_back(var.conIdxSet.size() - 1);
 }
 
-void ReaderMPS::TightenBound()
+bool ReaderMPS::TightenBound()
 {
   for (size_t conIdx = 1; conIdx < modelConUtil->conNum; ++conIdx)
   {
     auto &modelCon = modelConUtil->conSet[conIdx];
     if (modelCon.varIdxSet.size() == 1)
       TightenBoundVar(modelCon);
+    if (modelCon.varIdxSet.size() == 0)
+    {
+      assert(modelCon.coeffSet.size() == 0 &&
+             modelCon.posInVar.size() == 0);
+      if (modelCon.RHS + 1e-6 >= 0)
+      {
+        modelCon.inferSAT = true;
+        deleteConNum++;
+      }
+      else
+      {
+        printf("c con.rhs %lf\n", modelCon.RHS);
+        return false;
+      }
+    }
   }
+  return true;
 }
 
 void ReaderMPS::TightenBoundVar(ModelCon &modelCon)

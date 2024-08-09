@@ -27,7 +27,7 @@ private:
   istringstream iss;
   string readLine;
   bool integralityMarker;
-  void TightenBound();
+  bool TightenBound();
   void TightenBoundVar(ModelCon &_modelCon);
   bool TightBoundGlobally();
   bool SetVarType();
@@ -39,7 +39,7 @@ private:
   inline void IssSetup();
   void PushCoeffVarIdx(
       const size_t _conIdx,
-    Value _coeff,
+      Value _coeff,
       const string &_varName);
 
 public:
