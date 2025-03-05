@@ -36,3 +36,6 @@ Peng Lin, Mengchuan Zou, and Shaowei Cai. An Efficient Local Search Solver for M
 8. [https://miplib.zib.de/instance_details_neos-4232544-orira.html](https://miplib.zib.de/instance_details_neos-4232544-orira.html)
 9. [https://miplib.zib.de/instance_details_scpm1.html](https://miplib.zib.de/instance_details_scpm1.html)
 10. [https://miplib.zib.de/instance_details_scpn2.html](https://miplib.zib.de/instance_details_scpn2.html)
+
+## News
+- [The three common CO problems mps datasets (bpp, jsp, and osp) used in the article have been shared.](https://drive.google.com/drive/folders/1jWVl8gdvmrJD_LbZtFL6aTUh0Vg3P10k?usp=drive_link)
