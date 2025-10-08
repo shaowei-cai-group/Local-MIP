@@ -31,7 +31,7 @@ int LocalMIP::LocalSearch(
       printf("\nc UNSAT Size: %-10ld; ", localConUtil.unsatConIdxs.size());
     if (localConUtil.unsatConIdxs.empty())
     {
-      if (!isFoundFeasible || localObj.LHS < localObj.RHS)
+      if (!isFoundFeasible || localObj.LHS <= localObj.RHS)
       {
         UpdateBestSolution();
         LogObj(_clkStart);
