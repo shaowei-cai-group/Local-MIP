@@ -18,7 +18,7 @@
 
 int LocalMIP::LocalSearch(
     Value _optimalObj,
-    chrono::_V2::system_clock::time_point _clkStart)
+    chrono::system_clock::time_point _clkStart)
 {
   Allocate();
   InitSolution();
@@ -62,9 +62,9 @@ int LocalMIP::LocalSearch(
 }
 
 bool LocalMIP::Timeout(
-    chrono::_V2::system_clock::time_point &_clkStart)
+    chrono::system_clock::time_point &_clkStart)
 {
-  auto clk_now = chrono::high_resolution_clock::now();
+  auto clk_now = chrono::system_clock::now();
   auto solve_time =
       chrono::duration_cast<chrono::seconds>(clk_now - _clkStart).count();
   if (solve_time >= OPT(cutoff))
@@ -73,7 +73,7 @@ bool LocalMIP::Timeout(
 }
 
 void LocalMIP::LogObj(
-    chrono::_V2::system_clock::time_point &_clkStart)
+    chrono::system_clock::time_point &_clkStart)
 {
   auto clk = TimeNow();
   printf(
