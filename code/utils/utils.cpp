@@ -16,14 +16,14 @@
 
 #include "header.h"
 
-std::chrono::system_clock::time_point TimeNow()
+std::chrono::high_resolution_clock::time_point TimeNow()
 {
-  return chrono::system_clock::now();
+  return chrono::high_resolution_clock::now();
 }
 
 double ElapsedTime(
-    const std::chrono::system_clock::time_point &a,
-    const std::chrono::system_clock::time_point &b)
+    const std::chrono::high_resolution_clock::time_point &a,
+    const std::chrono::high_resolution_clock::time_point &b)
 {
   return chrono::duration_cast<chrono::milliseconds>(a - b).count() / 1000.0;
 }

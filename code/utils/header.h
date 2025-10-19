@@ -49,10 +49,10 @@ enum class VarType
     Real,
     Fixed
 };
-std::chrono::system_clock::time_point TimeNow();
+std::chrono::high_resolution_clock::time_point TimeNow();
 double ElapsedTime(
-    const std::chrono::system_clock::time_point &a,
-    const std::chrono::system_clock::time_point &b);
+    const std::chrono::high_resolution_clock::time_point &a,
+    const std::chrono::high_resolution_clock::time_point &b);
 bool IsBlank(
     const string &a);
 void PrintfError(

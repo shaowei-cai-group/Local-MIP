@@ -33,8 +33,8 @@ public:
   ModelConUtil *modelConUtil;
   ModelVarUtil *modelVarUtil;
   LocalMIP *localMIP;
-  chrono::system_clock::time_point clkStart =
-      chrono::system_clock::now();
+  chrono::high_resolution_clock::time_point clkStart =
+      chrono::high_resolution_clock::now();
   Solver();
   ~Solver();
   void Run();

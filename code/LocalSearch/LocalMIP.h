@@ -87,9 +87,9 @@ private:
       Value &_res);
   void InitSolution();
   bool Timeout(
-      chrono::system_clock::time_point &_clkStart);
+      chrono::high_resolution_clock::time_point &_clkStart);
   void LogObj(
-      chrono::system_clock::time_point &_clkStart);
+      chrono::high_resolution_clock::time_point &_clkStart);
 
 public:
   LocalMIP(
@@ -98,7 +98,7 @@ public:
   ~LocalMIP();
   int LocalSearch(
       Value _optimalObj,
-      chrono::system_clock::time_point _clkStart);
+      chrono::high_resolution_clock::time_point _clkStart);
   void PrintResult();
   void PrintSol();
   void Allocate();
