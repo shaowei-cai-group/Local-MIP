@@ -45,11 +45,6 @@ Key flags (see `src/utils/paras.h` for full list):
 - `-b` bound strengthen level
 - `-l` enable objective logging
 
-After generating `test.sol`, you can verify an instance from the project root:
-```bash
-./verify.sh 2club200v15p5scn
-```
-
 ## Build & Run Examples
 Examples are decoupled from the main tree. Prepare once, then build:
 ```bash
