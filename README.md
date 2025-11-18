@@ -1,26 +1,30 @@
 # Local-MIP
 
-Local-MIP is a C++20 local-search solver for mixed integer programming. The solver provides a lightweight CLI, a small C++ API surface, and a set of callback hooks so you can customize starts, restarts, weights, and neighborhood behaviors.
+Local-MIP is a C++20 local-search solver for mixed integer programming. It ships with a lightweight CLI plus a focused C++ API and callback hooks to customize starts, restarts, weights, scoring funtions, and neighborhood behavior.
 
 ## Version History
 
 **Note:** Local-MIP 1.0 has been archived and is available in `archive/Local-MIP-1.0/`. The experimental results reported in the referenced papers (CP 2024 and Artificial Intelligence 2025) were obtained using Local-MIP 1.0.
 
 ## Repository Layout
-- `src/` – solver entry (`src/local_mip/Local_MIP.cpp`), CLI wrapper (`src/utils/main.cpp`), search logic in `src/local_search/`, parsing in `src/reader/`, and model utilities in `src/model_data/`.
-- `tests/` – unit, integration, and instance-driven tests (CMake/CTest targets).
+- `src/` – solver entry (`src/local_mip/Local_MIP.cpp`), CLI wrapper (`src/utils/main.cpp`), search logic (`src/local_search/`), parsing (`src/reader/`), and model utilities (`src/model_data/`).
+- `tests/` – unit, integration, and instance-driven tests (CMake/CTest).
 - `example/` – standalone API examples; buildable independently after preparing headers/static lib.
-- `test-set/` – sample `.mps`/`.lp` instances and reference `test.sol`.
+- `test-set/` – sample `.mps/.lp` instances.
 - `build/` – generated build artifacts (created by `./build.sh`).
-- `python-bindings/` – optional pybind11 bindings (built separately; see Python section).
-- `default.set` – default parameter configuration file (see Parameter Configuration section).
+- `python-bindings/` – optional pybind11 bindings (built separately).
+- `default.set` – parameter configuration template.
 
 ## Requirements
 - CMake ≥ 3.15
 - A C++20 compiler (GCC/Clang) and pthreads
 - bash, make, and standard POSIX utilities
 
-## Build the Solver
+---
+
+## Path 1: Use the CLI Solver
+
+### Build
 From the repository root:
 ```bash
 # Release build (recommended)
@@ -32,9 +36,9 @@ From the repository root:
 # Clean build artifacts
 ./build.sh clean
 ```
-The solver binary and static library are produced under `build/` (e.g., `build/Local-MIP`, `build/libLocalMIP.a`).
+The solver binary and static library are written to `build/` (e.g., `build/Local-MIP`, `build/libLocalMIP.a`).
 
-## Run the Solver
+### Run
 Run from `build/` so relative paths resolve:
 ```bash
 cd build
@@ -42,7 +46,7 @@ cd build
 ```
 
 ### Command Line Parameters
-Key flags (see `src/utils/paras.h` for full list):
+Key flags (see `src/utils/paras.h` for the full list):
 - `-i` / `--model_file` – input MPS/LP file (required)
 - `-t` / `--time_limit` – time limit in seconds
 - `-b` / `--bound_strengthen` – bound strengthen level (0-off, 1-ip, 2-mip)
@@ -53,41 +57,25 @@ Key flags (see `src/utils/paras.h` for full list):
 ### Parameter Configuration File
 You can use a configuration file to set parameters instead of (or in addition to) command line arguments. The repository includes `default.set` as a template with all available parameters and their default values.
 
-Example usage:
+Example:
 ```bash
 cd build
 ./Local-MIP --param_set_file ../default.set --model_file ../test-set/2club200v15p5scn.mps
 ```
 
-Configuration file format:
+Format rules:
 - One parameter per line: `parameter_name = value` or `parameter_name value`
 - Lines starting with `#` or `;` are comments
 - Command line arguments override values from the configuration file
-- See `default.set` for a complete list of parameters with descriptions and valid ranges
+- See `default.set` for descriptions and valid ranges
 
-## Build & Run Examples
-Examples are decoupled from the main tree. Prepare once, then build:
-```bash
-cd example
-./prepare.sh   # copies libLocalMIP.a, headers, and sample test-set files
-./build.sh     # builds all demos
-```
-Notable demo directories:
-- `simple-api/` – minimal solver usage
-- `start-callback/`, `restart-callback/`, `weight-callback/` – callback hooks
-- `scoring-lift/`, `scoring-neighbor/` – custom scoring in feasible/infeasible phases
-- `neighbor-config/`, `neighbor-userdata/` – neighbor configuration and custom operators
-
-Each demo binary is emitted inside its directory (e.g., `example/simple-api/simple_api_demo`).
-
-## Tests
+### Tests
 CTest targets are defined in `tests/CMakeLists.txt`.
 ```bash
-# Configure (same as normal build)
 ./build.sh debug   # or release
 cd build
 
-# Run unit tests subset
+# Run unit test subset
 ctest --output-on-failure -R "^(api|callbacks|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config)$"
 
 # Run integration tests
@@ -97,7 +85,34 @@ ctest --output-on-failure -R "^integration$"
 ctest --output-on-failure
 ```
 
-## Python
+---
+
+## Path 2: Use as a Library
+
+### C++ static library
+- The core build produces `build/libLocalMIP.a`; headers live under `src/`.
+- Link against the static library directly or follow the example projects under `example/`.
+
+### Example projects (C++ API)
+Examples are decoupled from the main tree. Prepare once, then build:
+```bash
+cd example
+./prepare.sh   # copies libLocalMIP.a, headers, and sample test-set files into example/
+./build.sh     # builds all demos
+```
+Notable demo directories:
+- `simple-api/` – minimal solver usage
+- `start-callback/`, `restart-callback/`, `weight-callback/` – callback hooks
+- `scoring-lift/`, `scoring-neighbor/` – custom scoring in feasible/infeasible phases
+- `neighbor-config/`, `neighbor-userdata/` – neighbor configuration and custom operators
+
+Each demo binary is emitted inside its directory. Run demos from the `example/` directory (where `test-set/` resides), e.g.:
+```bash
+cd example
+./simple-api/simple_api_demo
+```
+
+### Python bindings (pybind11)
 Located in `python-bindings/` (separate from the core). Quick start:
 ```bash
 python-bindings/build.sh   # builds core if needed and compiles the pybind11 module
@@ -105,6 +120,8 @@ export PYTHONPATH=$PWD/python-bindings/build:$PYTHONPATH
 python3 python-bindings/sample.py
 ```
 The module (`localmip_py*.so`) links against the core static library. The sample loads `test-set/2club200v15p5scn.mps`, runs the solver, and writes `py_example.sol`. Callback contexts are passed as opaque capsules; extend `python-bindings/local_mip_py.cpp` if you need field-level access.
+
+---
 
 ## Development Notes
 - Code style: C++20, two-space indentation, local headers before system headers, prefer `printf`-family.

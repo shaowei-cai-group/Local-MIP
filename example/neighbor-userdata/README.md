@@ -201,7 +201,8 @@ The neighbor receives `Neighbor::Neighbor_Ctx` with:
 ```bash
 cd example/neighbor-userdata
 g++ -O3 -std=c++20 neighbor_userdata.cpp -I../../src -L../../build -lLocalMIP -lpthread -o neighbor_userdata_demo
-./neighbor_userdata_demo
+cd ..  # run from example/ so test-set/ is in place
+./neighbor-userdata/neighbor_userdata_demo
 ```
 
 ## Expected Output

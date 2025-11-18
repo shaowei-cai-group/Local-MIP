@@ -35,7 +35,8 @@ Build/run this example only (requires main project built to provide `build/libLo
 ```bash
 cd example/neighbor-config
 g++ -O3 -std=c++20 neighbor_config.cpp -I../../src -L../../build -lLocalMIP -lpthread -o neighbor_config_demo
-./neighbor_config_demo ../test-set/2club200v15p5scn.mps   # or another .mps file
+cd ..  # run from example/ so test-set/ is in place
+./neighbor-config/neighbor_config_demo ./test-set/2club200v15p5scn.mps   # or another .mps file
 ```
 
 ## Sample Output (excerpt)
