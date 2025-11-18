@@ -46,13 +46,7 @@ cd build
 ```
 
 ### Command Line Parameters
-Key flags (see `src/utils/paras.h` for the full list):
-- `-i` / `--model_file` – input MPS/LP file (required)
-- `-t` / `--time_limit` – time limit in seconds
-- `-b` / `--bound_strengthen` – bound strengthen level (0-off, 1-ip, 2-mip)
-- `-l` / `--log_obj` – enable objective logging (0/1)
-- `-s` / `--sol_path` – solution output file path (.sol format)
-- `-c` / `--param_set_file` – parameter configuration file (.set format)
+All CLI options are documented in `document/parameters.md`.
 
 ### Parameter Configuration File
 You can use a configuration file to set parameters instead of (or in addition to) command line arguments. The repository includes `default.set` as a template with all available parameters and their default values.
@@ -64,7 +58,7 @@ cd build
 ```
 
 Format rules:
-- One parameter per line: `parameter_name = value` or `parameter_name value`
+- One parameter per line: `parameter_name = value` 
 - Lines starting with `#` or `;` are comments
 - Command line arguments override values from the configuration file
 - See `default.set` for descriptions and valid ranges
@@ -92,6 +86,9 @@ ctest --output-on-failure
 ### C++ static library
 - The core build produces `build/libLocalMIP.a`; headers live under `src/`.
 - Link against the static library directly or follow the example projects under `example/`.
+
+### Callbacks (customize the solver)
+Local-MIP exposes multiple callback hooks (start, restart, weight, neighbor generation, neighbor scoring, lift scoring). Predefined demos live under `example/` (e.g., `start-callback/`, `restart-callback/`, `weight-callback/`, `neighbor-config/`, `neighbor-userdata/`, `scoring-neighbor/`, `scoring-lift/`). Full callback details and contexts are documented in `document/callbacks.md`.
 
 ### Example projects (C++ API)
 Examples are decoupled from the main tree. Prepare once, then build:
