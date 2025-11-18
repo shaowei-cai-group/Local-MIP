@@ -13,6 +13,7 @@ Local-MIP is a C++20 local-search solver for mixed integer programming. The solv
 - `test-set/` – sample `.mps`/`.lp` instances and reference `test.sol`.
 - `build/` – generated build artifacts (created by `./build.sh`).
 - `python-bindings/` – optional pybind11 bindings (built separately; see Python section).
+- `default.set` – default parameter configuration file (see Parameter Configuration section).
 
 ## Requirements
 - CMake ≥ 3.15
@@ -39,11 +40,30 @@ Run from `build/` so relative paths resolve:
 cd build
 ./Local-MIP -i ../test-set/2club200v15p5scn.mps -t 300 -b 1 -l 1
 ```
+
+### Command Line Parameters
 Key flags (see `src/utils/paras.h` for full list):
-- `-i` input MPS/LP file
-- `-t` time limit (seconds)
-- `-b` bound strengthen level
-- `-l` enable objective logging
+- `-i` / `--model_file` – input MPS/LP file (required)
+- `-t` / `--time_limit` – time limit in seconds
+- `-b` / `--bound_strengthen` – bound strengthen level (0-off, 1-ip, 2-mip)
+- `-l` / `--log_obj` – enable objective logging (0/1)
+- `-s` / `--sol_path` – solution output file path (.sol format)
+- `-c` / `--param_set_file` – parameter configuration file (.set format)
+
+### Parameter Configuration File
+You can use a configuration file to set parameters instead of (or in addition to) command line arguments. The repository includes `default.set` as a template with all available parameters and their default values.
+
+Example usage:
+```bash
+cd build
+./Local-MIP --param_set_file ../default.set --model_file ../test-set/2club200v15p5scn.mps
+```
+
+Configuration file format:
+- One parameter per line: `parameter_name = value` or `parameter_name value`
+- Lines starting with `#` or `;` are comments
+- Command line arguments override values from the configuration file
+- See `default.set` for a complete list of parameters with descriptions and valid ranges
 
 ## Build & Run Examples
 Examples are decoupled from the main tree. Prepare once, then build:
@@ -89,8 +109,6 @@ The module (`localmip_py*.so`) links against the core static library. The sample
 ## Development Notes
 - Code style: C++20, two-space indentation, local headers before system headers, prefer `printf`-family.
 - Keep CLI parameters in sync with `src/utils/paras.h` and help text.
-- Instances and generated `test.sol` belong in `test-set/`; leave `evaluation/bin/` untouched.
-- Before publishing, rebuild examples via `example/prepare.sh` + `example/build.sh` to ensure API compatibility.
 
 ## Reference
 If you use **Local-MIP** in an academic context, please cite the following articles:
