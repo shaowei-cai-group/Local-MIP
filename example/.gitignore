@@ -1,0 +1,12 @@
+build/
+
+*/*_demo
+
+lib/
+include/
+
+test-set/
+
+*.o
+*.a
+*.so

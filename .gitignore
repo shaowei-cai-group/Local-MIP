@@ -1,2 +1,4 @@
+.vscode/
+.claude/
 build/
 .cache/

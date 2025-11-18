@@ -1,0 +1,37 @@
+# Local-MIP Default Parameter Configuration File
+# Model file path must be specified via command line: --model_file test-set/sct1.mps
+
+# Basic Parameters
+time_limit = 10                # double, [0, 1e8], time limit in seconds
+random_seed = 0                # int, [0, 2147483647], random seed for local search (0 to use default)
+feas_tolerance = 0.000001      # double, [0, 0.01], feasibility tolerance
+opt_tolerance = 0.0001         # double, [0, 1], optimality tolerance
+zero_tolerance = 0.000000001   # double, [0, 0.001], zero value tolerance
+bound_strengthen = 1           # int, [0, 2], bound strengthen level (0-off, 1-ip, 2-mip)
+log_obj = 1                    # int, [0, 1], log objective or not
+break_eq_feas = 0              # int, [0, 1], break feasibility on equality constraints or not
+split_eq = 1                   # int, [0, 1], split equalities into two inequalities
+debug = 0                      # int, [0, 1], debug mode or not
+restart_step = 1000000         # int, [0, 100000000], no-improvement steps before restart (0 disables)
+smooth_prob = 1                # int, [0, 10000], weight smooth probability in 1/10000
+
+# BMS Parameters
+bms_unsat_con = 12             # int, [0, 100000000], BMS unsatisfied constraint sample size
+bms_unsat_ops = 2250           # int, [0, 100000000], BMS MTM unsatisfied operations
+bms_sat_con = 1                # int, [0, 100000000], BMS satisfied constraint sample size
+bms_sat_ops = 80               # int, [0, 100000000], BMS MTM satisfied operations
+bms_flip_ops = 0               # int, [0, 100000000], BMS flip operations
+bms_easy_ops = 5               # int, [0, 100000000], BMS easy operations
+bms_random_ops = 250           # int, [0, 100000000], BMS random operations
+
+# Tabu Search
+tabu_base = 4                  # int, [0, 100000000], tabu base tenure
+tabu_var = 7                   # int, [1, 100000000], tabu tenure variation (min 1)
+activity_period = 100000       # int, [1, 100000000], constraint activity recompute period
+
+# Strategy Options
+start = zero                   # string, start method: zero/random
+restart = best                 # string, restart strategy: random/best/hybrid
+weight = monotone              # string, weight method: smooth/monotone
+lift_scoring = lift_age        # string, feas scoring: lift_age/lift_random
+neighbor_scoring = progress_bonus # string, infeas scoring: progress_bonus/progress_age

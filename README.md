@@ -1,29 +1,106 @@
 # Local-MIP
-**A standalone local search solver for general mixed integer programming**
 
----
+Local-MIP is a C++20 local-search solver for mixed integer programming. The solver provides a lightweight CLI, a small C++ API surface, and a set of callback hooks so you can customize starts, restarts, weights, and neighborhood behaviors.
 
-## Run
+## Version History
+
+**Note:** Local-MIP 1.0 has been archived and is available in `archive/Local-MIP-1.0/`. The experimental results reported in the referenced papers (CP 2024 and Artificial Intelligence 2025) were obtained using Local-MIP 1.0.
+
+## Repository Layout
+- `src/` – solver entry (`src/local_mip/Local_MIP.cpp`), CLI wrapper (`src/utils/main.cpp`), search logic in `src/local_search/`, parsing in `src/reader/`, and model utilities in `src/model_data/`.
+- `tests/` – unit, integration, and instance-driven tests (CMake/CTest targets).
+- `example/` – standalone API examples; buildable independently after preparing headers/static lib.
+- `test-set/` – sample `.mps`/`.lp` instances and reference `test.sol`.
+- `build/` – generated build artifacts (created by `./build.sh`).
+- `python-bindings/` – optional pybind11 bindings (built separately; see Python section).
+
+## Requirements
+- CMake ≥ 3.15
+- A C++20 compiler (GCC/Clang) and pthreads
+- bash, make, and standard POSIX utilities
+
+## Build the Solver
+From the repository root:
 ```bash
-cd bin
-chmod a+x Local-MIP
-./Local-MIP --instance=<instance.mps> --cutoff=<cutoff>
+# Release build (recommended)
+./build.sh release
+
+# Debug build with assertions/logging
+./build.sh debug
+
+# Clean build artifacts
+./build.sh clean
 ```
-or
+The solver binary and static library are produced under `build/` (e.g., `build/Local-MIP`, `build/libLocalMIP.a`).
+
+## Run the Solver
+Run from `build/` so relative paths resolve:
 ```bash
-mkdir build
-cd code
-chmod a+x run
-./run --instance=<instance.mps> --cutoff=<cutoff>
+cd build
+./Local-MIP -i ../test-set/2club200v15p5scn.mps -t 300 -b 1 -l 1
+```
+Key flags (see `src/utils/paras.h` for full list):
+- `-i` input MPS/LP file
+- `-t` time limit (seconds)
+- `-b` bound strengthen level
+- `-l` enable objective logging
+
+After generating `test.sol`, you can verify an instance from the project root:
+```bash
+./verify.sh 2club200v15p5scn
 ```
 
-- `<instance.mps>`: path to the MIP instance in `.mps` format  
-- `<cutoff>`: runtime limit in seconds  
+## Build & Run Examples
+Examples are decoupled from the main tree. Prepare once, then build:
+```bash
+cd example
+./prepare.sh   # copies libLocalMIP.a, headers, and sample test-set files
+./build.sh     # builds all demos
+```
+Notable demo directories:
+- `simple-api/` – minimal solver usage
+- `start-callback/`, `restart-callback/`, `weight-callback/` – callback hooks
+- `scoring-lift/`, `scoring-neighbor/` – custom scoring in feasible/infeasible phases
+- `neighbor-config/`, `neighbor-userdata/` – neighbor configuration and custom operators
 
----
+Each demo binary is emitted inside its directory (e.g., `example/simple-api/simple_api_demo`).
+
+## Tests
+CTest targets are defined in `tests/CMakeLists.txt`.
+```bash
+# Configure (same as normal build)
+./build.sh debug   # or release
+cd build
+
+# Run unit tests subset
+ctest --output-on-failure -R "^(api|callbacks|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config)$"
+
+# Run integration tests
+ctest --output-on-failure -R "^integration$"
+
+# Run all tests (including per-instance sweeps)
+ctest --output-on-failure
+```
+
+## Python
+Located in `python-bindings/` (separate from the core). Quick start:
+```bash
+python-bindings/build.sh   # builds core if needed and compiles the pybind11 module
+export PYTHONPATH=$PWD/python-bindings/build:$PYTHONPATH
+python3 python-bindings/sample.py
+```
+The module (`localmip_py*.so`) links against the core static library. The sample loads `test-set/2club200v15p5scn.mps`, runs the solver, and writes `py_example.sol`. Callback contexts are passed as opaque capsules; extend `python-bindings/local_mip_py.cpp` if you need field-level access.
+
+## Development Notes
+- Code style: C++20, two-space indentation, local headers before system headers, prefer `printf`-family.
+- Keep CLI parameters in sync with `src/utils/paras.h` and help text.
+- Instances and generated `test.sol` belong in `test-set/`; leave `evaluation/bin/` untouched.
+- Before publishing, rebuild examples via `example/prepare.sh` + `example/build.sh` to ensure API compatibility.
 
 ## Reference
 If you use **Local-MIP** in an academic context, please cite the following articles:
+
+**Important:** The experimental results reported in the papers below were obtained using Local-MIP 1.0, which has been archived in `archive/Local-MIP-1.0/`.
 
 1. **Journal Version (Artificial Intelligence, 2025)**  
    Peng Lin, Shaowei Cai, Mengchuan Zou, Jinkun Lin,  
@@ -82,8 +159,3 @@ Local-MIP has set new records for several benchmark instances in the MIPLIB data
 8. [neos-4232544-orira](https://miplib.zib.de/instance_details_neos-4232544-orira.html)  
 9. [scpm1](https://miplib.zib.de/instance_details_scpm1.html)  
 10. [scpn2](https://miplib.zib.de/instance_details_scpn2.html)  
-
----
-
-## News
-- [The benchmark datasets (BPP, JSP, and OSP) used in the article have been shared here.](https://drive.google.com/drive/folders/1jWVl8gdvmrJD_LbZtFL6aTUh0Vg3P10k?usp=drive_link)

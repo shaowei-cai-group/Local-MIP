@@ -1,0 +1,10 @@
+#!/bin/bash
+
+cd ../build
+
+cmake ..
+make -j
+
+
+cd ..
+./build/Local-MIP "$@"
