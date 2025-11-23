@@ -136,8 +136,7 @@ The callback receives `Scoring::Lift_Ctx` with access to:
 ```bash
 cd example/scoring-lift
 g++ -O3 -std=c++20 lift_degree.cpp -I../../src -L../../build -lLocalMIP -lpthread -o lift_degree_demo
-cd ..  # run from example/ so test-set/ is in place
-./scoring-lift/lift_degree_demo
+./lift_degree_demo
 ```
 
 ## Expected Output

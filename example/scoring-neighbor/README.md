@@ -141,8 +141,7 @@ The callback receives `Scoring::Neighbor_Ctx` with access to:
 ```bash
 cd example/scoring-neighbor
 g++ -O3 -std=c++20 neighbor_random.cpp -I../../src -L../../build -lLocalMIP -lpthread -o neighbor_random_demo
-cd ..  # run from example/ so test-set/ is in place
-./scoring-neighbor/neighbor_random_demo
+./neighbor_random_demo
 ```
 
 ## Expected Output

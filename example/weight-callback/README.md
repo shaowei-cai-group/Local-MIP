@@ -96,8 +96,7 @@ The callback receives `Weight::Weight_Ctx` with access to:
 ```bash
 cd example/weight-callback
 g++ -O3 -std=c++20 weight_callback.cpp -I../../src -L../../build -lLocalMIP -lpthread -o weight_callback_demo
-cd ..  # run from example/ so test-set/ is in place
-./weight-callback/weight_callback_demo
+./weight_callback_demo
 ```
 
 ## Expected Output

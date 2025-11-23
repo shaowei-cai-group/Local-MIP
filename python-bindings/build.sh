@@ -26,8 +26,9 @@ rm -rf "${BIND_BUILD}"
 mkdir -p "${BIND_BUILD}"
 echo "==> Configuring bindings..."
 cmake -S "${BIND_DIR}" -B "${BIND_BUILD}" \
-  -DPython_EXECUTABLE="${PY_EXE}" \
-  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+  -DPYTHON_EXECUTABLE="${PY_EXE}" \
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  -Wno-dev
 
 # 3) Build bindings
 echo "==> Building bindings..."

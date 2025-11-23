@@ -77,8 +77,7 @@ The callback receives `Start::Start_Ctx` with access to:
 ```bash
 cd example/start-callback
 g++ -O3 -std=c++20 start_callback.cpp -I../../src -L../../build -lLocalMIP -lpthread -o start_callback_demo
-cd ..  # run from example/ so test-set/ is in place
-./start-callback/start_callback_demo
+./start_callback_demo
 ```
 
 ## Expected Output

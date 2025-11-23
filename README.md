@@ -33,10 +33,13 @@ From the repository root:
 # Debug build with assertions/logging
 ./build.sh debug
 
+# Build everything (core + examples + python bindings)
+./build.sh all
+
 # Clean build artifacts
 ./build.sh clean
 ```
-The solver binary and static library are written to `build/` (e.g., `build/Local-MIP`, `build/libLocalMIP.a`).
+The solver binary and static library are written to `build/` (e.g., `build/Local-MIP`, `build/libLocalMIP.a`). `./build.sh all` additionally prepares/builds the `example/` demos and the pybind11 module under `python-bindings/build/`.
 
 ### Run
 Run from `build/` so relative paths resolve:
@@ -46,7 +49,10 @@ cd build
 ```
 
 ### Command Line Parameters
-All CLI options are documented in `document/parameters.md`.
+Run `./Local-MIP --help` (from `build/`) to see available CLI flags. The `default.set` template lists every parameter with its default value and brief notes; it can be used as-is or customized.
+
+### MPS Support
+The reader now handles `RANGES` sections (SOS data is still rejected with an error).
 
 ### Parameter Configuration File
 You can use a configuration file to set parameters instead of (or in addition to) command line arguments. The repository includes `default.set` as a template with all available parameters and their default values.
@@ -88,10 +94,10 @@ ctest --output-on-failure
 - Link against the static library directly or follow the example projects under `example/`.
 
 ### Callbacks (customize the solver)
-Local-MIP exposes multiple callback hooks (start, restart, weight, neighbor generation, neighbor scoring, lift scoring). Predefined demos live under `example/` (e.g., `start-callback/`, `restart-callback/`, `weight-callback/`, `neighbor-config/`, `neighbor-userdata/`, `scoring-neighbor/`, `scoring-lift/`). Full callback details and contexts are documented in `document/callbacks.md`.
+Local-MIP exposes multiple callback hooks (start, restart, weight, neighbor generation, neighbor scoring, lift scoring). Predefined demos live under `example/` (e.g., `start-callback/`, `restart-callback/`, `weight-callback/`, `neighbor-config/`, `neighbor-userdata/`, `scoring-neighbor/`, `scoring-lift/`). Refer to the example READMEs and callback type declarations in `src/local_search/` for signatures and available context fields.
 
 ### Example projects (C++ API)
-Examples are decoupled from the main tree. Prepare once, then build:
+Examples are decoupled from the main tree. Prepare once, then build (or run `./build.sh all` to do this automatically):
 ```bash
 cd example
 ./prepare.sh   # copies libLocalMIP.a, headers, and sample test-set files into example/
@@ -103,10 +109,10 @@ Notable demo directories:
 - `scoring-lift/`, `scoring-neighbor/` – custom scoring in feasible/infeasible phases
 - `neighbor-config/`, `neighbor-userdata/` – neighbor configuration and custom operators
 
-Each demo binary is emitted inside its directory. Run demos from the `example/` directory (where `test-set/` resides), e.g.:
+Each demo binary is emitted inside its directory; run it from that directory so relative paths resolve to `../test-set`, e.g.:
 ```bash
-cd example
-./simple-api/simple_api_demo
+cd example/simple-api
+./simple_api_demo
 ```
 
 ### Python bindings (pybind11)

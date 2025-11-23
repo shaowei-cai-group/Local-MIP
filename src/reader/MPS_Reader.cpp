@@ -26,6 +26,8 @@
 #include <ios>
 #include <iostream>
 #include <string>
+#include <utility>
+#include <vector>
 
 MPS_Reader::MPS_Reader(Model_Manager* p_model_manager)
     : m_model_manager(p_model_manager), m_integrality_marker(false)
@@ -156,10 +158,10 @@ void MPS_Reader::read(const char* p_model_file)
   {
     if (m_read_line.empty() || m_read_line[0] == '*')
       continue;
-    if (m_read_line[0] == 'B' || m_read_line[0] == 'E')
+    if (m_read_line[0] == 'B' || m_read_line[0] == 'E' ||
+        m_read_line[0] == 'R')
       break;
-    if (m_read_line[0] == 'R' ||
-        m_read_line[0] == 'S') // do not handle RANGS and SOS
+    if (m_read_line[0] == 'S') // do not handle SOS
       printf_error_line(m_read_line);
     iss_setup();
     if (!(m_iss >> temp_str >> con_name >> rhs))
@@ -175,6 +177,90 @@ void MPS_Reader::read(const char* p_model_file)
       if (!(m_iss >> rhs))
         printf_error_line(m_read_line);
       m_model_manager->set_rhs(con_name, rhs);
+    }
+  }
+  if (!m_read_line.empty() && m_read_line[0] == 'R') // RANGES section
+  {
+    size_t range_con_counter = 0;
+    auto make_range_con_name =
+        [&range_con_counter](const std::string& base_name)
+    {
+      return base_name + "_range_" + std::to_string(range_con_counter++);
+    };
+    auto add_range_constraint =
+        [&](const Model_Con& source, double new_rhs, char new_symbol)
+    {
+      const size_t term_num = source.term_num();
+      std::vector<std::pair<size_t, double>> terms;
+      terms.reserve(term_num);
+      for (size_t term_idx = 0; term_idx < term_num; ++term_idx)
+        terms.emplace_back(source.var_idx(term_idx),
+                           source.coeff(term_idx));
+      const std::string new_name = make_range_con_name(source.name());
+      size_t new_idx = m_model_manager->make_con(new_name, new_symbol);
+      auto& new_con = m_model_manager->con(new_idx);
+      new_con.set_rhs(new_rhs);
+      for (const auto& [var_idx, coeff] : terms)
+      {
+        auto& var = m_model_manager->var(var_idx);
+        var.add_con(new_idx, new_con.term_num());
+        new_con.add_var(var_idx, coeff, var.term_num() - 1);
+      }
+    };
+    auto apply_range_to_row =
+        [&](const std::string& row_name, double range_value)
+    {
+      size_t con_idx = m_model_manager->con_idx(row_name);
+      if (con_idx == 0)
+        printf_error_line(m_read_line);
+      auto& con = m_model_manager->con(con_idx);
+      double rhs_value = con.rhs();
+      double abs_range = std::fabs(range_value);
+      if (con.is_equality())
+      {
+        double upper_rhs =
+            range_value >= 0 ? rhs_value + range_value : rhs_value;
+        double lower_rhs =
+            range_value >= 0 ? rhs_value : rhs_value + range_value;
+        con.convert_equality_to_less();
+        con.set_rhs(upper_rhs);
+        add_range_constraint(con, lower_rhs, '>');
+      }
+      else if (con.is_greater())
+      {
+        double upper_rhs = rhs_value + abs_range;
+        add_range_constraint(con, upper_rhs, '<');
+      }
+      else
+      {
+        double lower_rhs = rhs_value - abs_range;
+        add_range_constraint(con, lower_rhs, '>');
+      }
+    };
+    while (std::getline(infile, m_read_line))
+    {
+      if (m_read_line.empty() || m_read_line[0] == '*')
+        continue;
+      if (m_read_line[0] == 'B' || m_read_line[0] == 'E')
+        break;
+      if (m_read_line[0] == 'S') // do not handle SOS
+        printf_error_line(m_read_line);
+      iss_setup();
+      double range_value = 0.0;
+      if (!(m_iss >> temp_str >> con_name >> range_value))
+      {
+        if (!is_blank(m_read_line))
+          printf_error_line(m_read_line);
+        else
+          continue;
+      }
+      apply_range_to_row(con_name, range_value);
+      while (m_iss >> con_name)
+      {
+        if (!(m_iss >> range_value))
+          printf_error_line(m_read_line);
+        apply_range_to_row(con_name, range_value);
+      }
     }
   }
   while (std::getline(infile, m_read_line)) // BOUNDS section

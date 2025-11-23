@@ -101,8 +101,7 @@ The callback receives `Restart::Restart_Ctx` with access to:
 ```bash
 cd example/restart-callback
 g++ -O3 -std=c++20 restart_callback.cpp -I../../src -L../../build -lLocalMIP -lpthread -o restart_callback_demo
-cd ..  # run from example/ so test-set/ is in place
-./restart-callback/restart_callback_demo
+./restart_callback_demo
 ```
 
 ## Expected Output

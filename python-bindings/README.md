@@ -6,6 +6,8 @@ This folder provides a minimal pybind11 module that exposes `Local_MIP` to Pytho
 - Build the solver first (produces `build/libLocalMIP.a`):
   ```bash
   ./build.sh release   # or debug
+  # or build everything in one go:
+  ./build.sh all
   ```
 - Install pybind11 (system package or `pip install pybind11`).
 
@@ -13,11 +15,17 @@ This folder provides a minimal pybind11 module that exposes `Local_MIP` to Pytho
 From repo root:
 ```bash
 cmake -S python-bindings -B python-bindings/build \
-  -DPython_EXECUTABLE="$(python3 -c 'import sys;print(sys.executable)')" \
-  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+  -DPYTHON_EXECUTABLE="$(python3 -c 'import sys;print(sys.executable)')" \
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  -Wno-dev
 cmake --build python-bindings/build
 ```
 Output: `python-bindings/build/localmip_py.cpython-*.so` (exact suffix depends on Python version).
+
+Alternatively, run the helper script (builds the core if missing):
+```bash
+PYTHON_EXECUTABLE=/path/to/python3 python-bindings/build.sh
+```
 
 ## Use in Python
 Either append the build directory to `PYTHONPATH` or copy the `.so` next to your script:

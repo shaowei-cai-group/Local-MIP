@@ -52,10 +52,8 @@ Or use the example build script if available.
 
 ## Running
 
-Run from the `example/` directory (it contains `test-set/` after `prepare.sh`):
 ```bash
-cd ..
-./simple-api/simple_api_demo
+./simple_api_demo
 ```
 
 ## Expected Output
