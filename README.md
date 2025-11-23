@@ -4,7 +4,7 @@
 
 Find out more about Local-MIP at [https://local-mip.github.io/](https://local-mip.github.io/).
 
-Although Local-MIP is freely available under the MIT license, we would be pleased to learn about users’ experiences and offer advice via email at [peng.lin.csor@gmail.com](peng.lin.csor@gmail.com).
+Although Local-MIP is freely available under the MIT license, we would be pleased to learn about users’ experiences and offer advice via email at [peng.lin.csor@gmail.com](mailto:peng.lin.csor@gmail.com).
 
 ## Version History
 
