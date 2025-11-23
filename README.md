@@ -1,6 +1,6 @@
 # Local-MIP
 
-Local-MIP is a C++20 local-search solver for mixed integer programming. It ships with a lightweight CLI plus a focused C++ API and callback hooks to customize starts, restarts, weights, scoring funtions, and neighborhood behavior.
+[Local-MIP](https://local-mip.github.io/) is a C++20 local-search solver for mixed integer programming. It ships with a lightweight CLI plus a focused C++ API and callback hooks to customize starts, restarts, weights, scoring funtions, and neighborhood behavior.
 
 Find out more about Local-MIP at [https://local-mip.github.io/](https://local-mip.github.io/).
 
