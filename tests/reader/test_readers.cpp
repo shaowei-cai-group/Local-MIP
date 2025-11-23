@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <sstream>  // Include standard library headers BEFORE macros
 
 #include "../test_utils.h"
 

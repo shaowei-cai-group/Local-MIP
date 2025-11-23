@@ -24,6 +24,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <sstream>  // Include standard library headers BEFORE macros
 
 #define private public
 #define protected public
