@@ -2,6 +2,10 @@
 
 Local-MIP is a C++20 local-search solver for mixed integer programming. It ships with a lightweight CLI plus a focused C++ API and callback hooks to customize starts, restarts, weights, scoring funtions, and neighborhood behavior.
 
+Find out more about Local-MIP at [https://local-mip.github.io/](https://local-mip.github.io/).
+
+Although Local-MIP is freely available under the MIT license, we would be pleased to learn about users’ experiences and offer advice via email at [peng.lin.csor@gmail.com](peng.lin.csor@gmail.com).
+
 ## Version History
 
 **Note:** Local-MIP 1.0 has been archived and is available in `archive/Local-MIP-1.0/`. The experimental results reported in the referenced papers (CP 2024 and Artificial Intelligence 2025) were obtained using Local-MIP 1.0.
@@ -17,7 +21,7 @@ Local-MIP is a C++20 local-search solver for mixed integer programming. It ships
 
 ## Requirements
 - CMake ≥ 3.15
-- A C++20 compiler (GCC/Clang) and pthreads
+- A C++20 compiler (GCC/Clang)
 - bash, make, and standard POSIX utilities
 
 ---
