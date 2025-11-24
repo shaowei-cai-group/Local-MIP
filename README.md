@@ -122,6 +122,7 @@ cd example/simple-api
 ### Python bindings (pybind11)
 Located in `python-bindings/` (separate from the core). Quick start:
 ```bash
+# install pybind11 by apt install python3-pybind11 -y
 python-bindings/build.sh   # builds core if needed and compiles the pybind11 module
 export PYTHONPATH=$PWD/python-bindings/build:$PYTHONPATH
 python3 python-bindings/sample.py
