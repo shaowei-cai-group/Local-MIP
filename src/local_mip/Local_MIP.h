@@ -158,4 +158,8 @@ public:
   double get_obj_value() const;
 
   bool is_feasible() const;
+
+  const std::vector<double>& get_solution() const;
+
+  const Model_Manager* get_model_manager() const;
 };

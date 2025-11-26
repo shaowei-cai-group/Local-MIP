@@ -38,7 +38,7 @@ Restart::Restart_Ctx::Restart_Ctx(const Readonly_Ctx& p_shared,
 
 Restart::Restart()
     : m_user_cbk(nullptr), m_user_data(nullptr),
-      m_default_strategy(Strategy::random), m_restart_step(0)
+      m_default_strategy(Strategy::best), m_restart_step(1000000)
 {
 }
 

@@ -34,11 +34,12 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 Local_MIP::Local_MIP()
     : m_model_file(""), m_time_limit(10.0), m_timeout_thread(),
       m_timeout_mutex(), m_timeout_cv(), m_cancel_timeout(true),
-      m_obj_log_thread(), m_stop_obj_log(true), m_log_obj_enabled(false),
+      m_obj_log_thread(), m_stop_obj_log(true), m_log_obj_enabled(true),
       m_reader(nullptr),
       m_model_manager(std::make_unique<Model_Manager>()),
       m_local_search(std::make_unique<Local_Search>(m_model_manager.get()))
@@ -427,4 +428,14 @@ double Local_MIP::get_obj_value() const
 bool Local_MIP::is_feasible() const
 {
   return m_local_search->is_feasible();
+}
+
+const std::vector<double>& Local_MIP::get_solution() const
+{
+  return m_local_search->get_solution();
+}
+
+const Model_Manager* Local_MIP::get_model_manager() const
+{
+  return m_model_manager.get();
 }

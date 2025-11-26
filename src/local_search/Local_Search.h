@@ -254,6 +254,8 @@ public:
 
   inline bool is_feasible() const;
 
+  inline const std::vector<double>& get_solution() const;
+
   void terminate();
 
   void set_sol_path(const std::string& p_sol_path);
@@ -407,6 +409,11 @@ inline double Local_Search::get_obj_value() const
 inline bool Local_Search::is_feasible() const
 {
   return m_is_found_feasible;
+}
+
+inline const std::vector<double>& Local_Search::get_solution() const
+{
+  return m_var_best_value;
 }
 
 inline void Local_Search::reset_op(bool p_require_positive)
