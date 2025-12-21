@@ -1,6 +1,10 @@
 # Local-MIP
 
-[Local-MIP](https://local-mip.github.io/) is a C++20 local-search solver for mixed integer programming. It ships with a lightweight CLI plus a focused C++ API and callback hooks to customize starts, restarts, weights, scoring funtions, and neighborhood behavior.
+[Local-MIP](https://local-mip.github.io/) is a C++20 local-search solver for mixed integer programming. It ships with a lightweight CLI plus a focused C++/Python API and callback hooks to customize starts, restarts, weights, scoring functions, and neighborhood behavior.
+
+<!--
+Note: Keep this README as the top-level entry point. Link to focused sub-READMEs for details.
+-->
 
 Find out more about Local-MIP at [https://local-mip.github.io/](https://local-mip.github.io/).
 
@@ -12,6 +16,7 @@ Although Local-MIP is freely available under the MIT license, we would be please
 
 ## Repository Layout
 - `src/` – solver entry (`src/local_mip/Local_MIP.cpp`), CLI wrapper (`src/utils/main.cpp`), search logic (`src/local_search/`), parsing (`src/reader/`), and model utilities (`src/model_data/`).
+- `src/model_api/` – Model API for programmatic model building (add variables/constraints from code).
 - `tests/` – unit, integration, and instance-driven tests (CMake/CTest).
 - `example/` – standalone API examples; buildable independently after preparing headers/static lib.
 - `test-set/` – sample `.mps/.lp` instances.
@@ -51,6 +56,7 @@ Run from `build/` so relative paths resolve:
 cd build
 ./Local-MIP -i ../test-set/2club200v15p5scn.mps -t 300 -b 1 -l 1
 ```
+Note: CLI flags support both short (e.g., `-i`) and long (e.g., `--model_file`) forms. Run `./Local-MIP --help` to see the exact mapping for your version.
 
 ### Command Line Parameters
 Run `./Local-MIP --help` (from `build/`) to see available CLI flags. The `default.set` template lists every parameter with its default value and brief notes; it can be used as-is or customized.
@@ -97,6 +103,27 @@ ctest --output-on-failure
 - The core build produces `build/libLocalMIP.a`; headers live under `src/`.
 - Link against the static library directly or follow the example projects under `example/`.
 
+### Model API (programmatic model building)
+If you want to **build a MIP model from code** (instead of reading `.mps/.lp`), use the Model API:
+
+- **C++ demo**: `example/model-api/model_api_demo.cpp` (see `example/model-api/README.md`)
+- **Python demo**: `python-bindings/model_api_demo.py` (requires the pybind11 module)
+
+Build & run (one-time):
+```bash
+# Build core + all examples + python bindings
+./build.sh all
+
+# Run the C++ Model API demo
+cd example/model-api
+./model_api_demo
+
+# Run the Python Model API demo
+cd ../../
+export PYTHONPATH=$PWD/python-bindings/build:$PYTHONPATH
+python3 python-bindings/model_api_demo.py
+```
+
 ### Callbacks (customize the solver)
 Local-MIP exposes multiple callback hooks (start, restart, weight, neighbor generation, neighbor scoring, lift scoring). Predefined demos live under `example/` (e.g., `start-callback/`, `restart-callback/`, `weight-callback/`, `neighbor-config/`, `neighbor-userdata/`, `scoring-neighbor/`, `scoring-lift/`). Refer to the example READMEs and callback type declarations in `src/local_search/` for signatures and available context fields.
 
@@ -109,6 +136,7 @@ cd example
 ```
 Notable demo directories:
 - `simple-api/` – minimal solver usage
+- `model-api/` – build models programmatically via the Model API
 - `start-callback/`, `restart-callback/`, `weight-callback/` – callback hooks
 - `scoring-lift/`, `scoring-neighbor/` – custom scoring in feasible/infeasible phases
 - `neighbor-config/`, `neighbor-userdata/` – neighbor configuration and custom operators
@@ -126,6 +154,9 @@ Located in `python-bindings/` (separate from the core). Quick start:
 python-bindings/build.sh   # builds core if needed and compiles the pybind11 module
 export PYTHONPATH=$PWD/python-bindings/build:$PYTHONPATH
 python3 python-bindings/sample.py
+
+# Model API demo (build models programmatically)
+python3 python-bindings/model_api_demo.py
 ```
 The module (`localmip_py*.so`) links against the core static library. The sample loads `test-set/2club200v15p5scn.mps`, runs the solver, and writes `py_example.sol`. Callback contexts are passed as opaque capsules; extend `python-bindings/local_mip_py.cpp` if you need field-level access.
 
