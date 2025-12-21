@@ -17,7 +17,6 @@
 #include <chrono>
 #include <cmath>
 #include <stdlib.h>
-#include <string>
 #include <sys/time.h>
 
 #ifdef DEBUG

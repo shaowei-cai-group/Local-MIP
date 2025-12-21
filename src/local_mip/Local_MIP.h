@@ -13,16 +13,19 @@
 
 #pragma once
 #include "../local_search/Local_Search.h"
+#include "../model_api/Model_API.h"
 #include "../model_data/Model_Manager.h"
 #include "../reader/Model_Reader.h"
+#include "utils/global_defs.h"
 #include <atomic>
 #include <condition_variable>
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 class Local_MIP
 {
@@ -51,6 +54,10 @@ private:
 
   std::unique_ptr<Local_Search> m_local_search;
 
+  std::unique_ptr<Model_API> m_model_api;
+
+  bool m_use_model_api;
+
   void request_timeout_stop();
 
   void timeout_handler();
@@ -62,6 +69,8 @@ private:
   void obj_log_handler();
 
   void prepare_reader();
+
+  bool check_model_api() const;
 
 public:
   Local_MIP();
@@ -152,6 +161,40 @@ public:
   void set_tabu_variation(size_t p_value);
 
   void set_break_eq_feas(bool p_enable);
+
+  void enable_model_api();
+
+  void set_sense(Model_API::Sense p_sense);
+
+  bool set_obj_offset(double p_offset);
+
+  int add_var(const std::string& p_name,
+              double p_lb,
+              double p_ub,
+              double p_cost = 0.0,
+              Var_Type p_type = Var_Type::real);
+
+  bool set_cost(int p_col, double p_cost);
+
+  bool set_cost(const std::string& p_name, double p_cost);
+
+  int add_con(double p_lb,
+              double p_ub,
+              const std::vector<int>& p_cols,
+              const std::vector<double>& p_coefs);
+
+  int add_con(double p_lb,
+              double p_ub,
+              const std::vector<std::string>& p_names,
+              const std::vector<double>& p_coefs);
+
+  bool add_var_to_con(int p_row, int p_col, double p_coef);
+
+  bool add_var_to_con(int p_row, const std::string& p_name, double p_coef);
+
+  bool set_integrality(int p_col, Var_Type p_type);
+
+  bool set_integrality(const std::string& p_name, Var_Type p_type);
 
   void run();
 

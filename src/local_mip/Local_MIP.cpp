@@ -12,6 +12,7 @@
 =====================================================================================*/
 
 #include "../local_search/Local_Search.h"
+#include "../model_api/Model_API.h"
 #include "../model_data/Model_Manager.h"
 #include "../reader/LP_Reader.h"
 #include "../reader/MPS_Reader.h"
@@ -30,6 +31,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -42,7 +44,9 @@ Local_MIP::Local_MIP()
       m_obj_log_thread(), m_stop_obj_log(true), m_log_obj_enabled(true),
       m_reader(nullptr),
       m_model_manager(std::make_unique<Model_Manager>()),
-      m_local_search(std::make_unique<Local_Search>(m_model_manager.get()))
+      m_local_search(
+          std::make_unique<Local_Search>(m_model_manager.get())),
+      m_model_api(nullptr), m_use_model_api(false)
 {
 }
 
@@ -302,8 +306,14 @@ void Local_MIP::set_break_eq_feas(bool p_enable)
 
 void Local_MIP::run()
 {
-  prepare_reader();
-  m_reader->read(m_model_file.c_str());
+  if (m_use_model_api)
+    m_model_api->build_model(*m_model_manager);
+  else
+  {
+    prepare_reader();
+    m_reader->read(m_model_file.c_str());
+  }
+
   if (!m_model_manager->process_after_read())
   {
     printf("c model is infeasible, skip local search.\n");
@@ -438,4 +448,123 @@ const std::vector<double>& Local_MIP::get_solution() const
 const Model_Manager* Local_MIP::get_model_manager() const
 {
   return m_model_manager.get();
+}
+
+bool Local_MIP::check_model_api() const
+{
+  if (!m_model_api)
+  {
+    fprintf(
+        stderr,
+        "Error: Model API not enabled. Call enable_model_api() first.\n");
+    return false;
+  }
+  return true;
+}
+
+void Local_MIP::enable_model_api()
+{
+  try
+  {
+    m_model_api = std::make_unique<Model_API>();
+    m_use_model_api = true;
+    printf("c Model API enabled for programmatic model building\n");
+  }
+  catch (const std::bad_alloc& e)
+  {
+    fprintf(stderr,
+            "Error: Failed to initialize Model API (memory allocation "
+            "failed)\n");
+    m_use_model_api = false;
+    m_model_api = nullptr;
+  }
+}
+
+void Local_MIP::set_sense(Model_API::Sense p_sense)
+{
+  if (!check_model_api())
+    return;
+  m_model_api->set_sense(p_sense);
+}
+
+bool Local_MIP::set_obj_offset(double p_offset)
+{
+  if (!check_model_api())
+    return false;
+  return m_model_api->set_obj_offset(p_offset);
+}
+
+int Local_MIP::add_var(const std::string& p_name,
+                       double p_lb,
+                       double p_ub,
+                       double p_cost,
+                       Var_Type p_type)
+{
+  if (!check_model_api())
+    return -1;
+  return m_model_api->add_var(p_name, p_lb, p_ub, p_cost, p_type);
+}
+
+bool Local_MIP::set_cost(int p_col, double p_cost)
+{
+  if (!check_model_api())
+    return false;
+  return m_model_api->set_cost(p_col, p_cost);
+}
+
+bool Local_MIP::set_cost(const std::string& p_name, double p_cost)
+{
+  if (!check_model_api())
+    return false;
+  return m_model_api->set_cost(p_name, p_cost);
+}
+
+int Local_MIP::add_con(double p_lb,
+                       double p_ub,
+                       const std::vector<int>& p_cols,
+                       const std::vector<double>& p_coefs)
+{
+  if (!check_model_api())
+    return -1;
+  return m_model_api->add_con(p_lb, p_ub, p_cols, p_coefs);
+}
+
+int Local_MIP::add_con(double p_lb,
+                       double p_ub,
+                       const std::vector<std::string>& p_names,
+                       const std::vector<double>& p_coefs)
+{
+  if (!check_model_api())
+    return -1;
+  return m_model_api->add_con(p_lb, p_ub, p_names, p_coefs);
+}
+
+bool Local_MIP::add_var_to_con(int p_row, int p_col, double p_coef)
+{
+  if (!check_model_api())
+    return false;
+  return m_model_api->add_var_to_con(p_row, p_col, p_coef);
+}
+
+bool Local_MIP::add_var_to_con(int p_row,
+                               const std::string& p_name,
+                               double p_coef)
+{
+  if (!check_model_api())
+    return false;
+  return m_model_api->add_var_to_con(p_row, p_name, p_coef);
+}
+
+bool Local_MIP::set_integrality(int p_col, Var_Type p_type)
+{
+  if (!check_model_api())
+    return false;
+  return m_model_api->set_integrality(p_col, p_type);
+}
+
+bool Local_MIP::set_integrality(const std::string& p_name, Var_Type p_type)
+{
+  if (!check_model_api())
+    return false;
+  return m_model_api->set_integrality(p_name, p_type);
 }

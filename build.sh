@@ -47,6 +47,7 @@ case $BUILD_TYPE in
         # 3. Build examples
         echo ""
         echo "==> Step 3/4: Building examples..."
+        ./build.sh clean
         ./build.sh
         cd ..
         

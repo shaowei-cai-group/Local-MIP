@@ -71,8 +71,8 @@ bool test_constructor_defaults()
               "timeout cancellation flag should start as true");
   ok &= check(solver.m_local_search->m_sol_path.empty(),
               "solution path should be empty by default");
-  ok &= check(!solver.m_log_obj_enabled,
-              "log obj should be disabled by default");
+  ok &= check(solver.m_log_obj_enabled,
+              "log obj should be enabled by default");
   ok &= check(solver.m_model_manager->m_split_eq,
               "split equality conversion should be enabled by default");
   return ok;

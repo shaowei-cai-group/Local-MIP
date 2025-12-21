@@ -358,8 +358,6 @@ void MPS_Reader::add_coeff_var_to_con(const std::string& p_con_name,
       m_model_manager->make_var(p_var_name, m_integrality_marker);
   auto& var = m_model_manager->var(var_idx);
   var.add_con(con_idx, con->term_num());
-  if (con_idx == 0)
-    p_coeff *= m_model_manager->is_min();
   con->add_var(var_idx, p_coeff, var.term_num() - 1);
 }
 

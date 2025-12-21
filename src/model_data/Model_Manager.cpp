@@ -82,8 +82,15 @@ bool Model_Manager::process_after_read()
     if (con.is_greater())
       con.convert_greater_to_less();
   }
-  if (!m_con_list.empty())
+  if (!m_con_list.empty() && m_obj_offset == 0.0)
     m_obj_offset = -m_con_list[0].rhs();
+  if (!m_con_list.empty() && m_is_min == -1)
+  {
+    auto& obj_con = m_con_list[0];
+    for (size_t i = 0; i < obj_con.term_num(); ++i)
+      obj_con.set_coeff(i, -obj_con.coeff(i));
+    m_obj_offset = -m_obj_offset;
+  }
   if (!calculate_vars())
   {
     printf("c model is infeasible due to variable bounds.\n");

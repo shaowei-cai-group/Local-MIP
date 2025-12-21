@@ -665,8 +665,7 @@ void LP_Reader::parse_objective(Tokenizer& p_tokenizer)
       parse_linear_expression(p_tokenizer, stop_predicate);
   for (const auto& term : obj_expr.terms)
     add_term(obj_name, term.first, term.second);
-  double rhs_value = -m_model_manager->is_min() * obj_expr.constant;
-  m_model_manager->con(0).set_rhs(rhs_value);
+  m_model_manager->con(0).set_rhs(-obj_expr.constant);
 }
 
 void LP_Reader::parse_constraints(Tokenizer& p_tokenizer)
@@ -950,10 +949,7 @@ void LP_Reader::add_term(const std::string& p_con_name,
   size_t var_idx = m_model_manager->make_var(p_var_name, false);
   auto& var = m_model_manager->var(var_idx);
   var.add_con(con_idx, con->term_num());
-  double coeff = p_coeff;
-  if (con_idx == 0)
-    coeff *= m_model_manager->is_min();
-  con->add_var(var_idx, coeff, var.term_num() - 1);
+  con->add_var(var_idx, p_coeff, var.term_num() - 1);
 }
 
 std::string LP_Reader::generate_constraint_name()

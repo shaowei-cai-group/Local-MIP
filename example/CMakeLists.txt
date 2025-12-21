@@ -144,6 +144,20 @@ target_link_libraries(neighbor_userdata_demo PRIVATE
     Threads::Threads
 )
 
+# model-api example
+add_executable(model_api_demo
+    model-api/model_api_demo.cpp
+)
+
+target_include_directories(model_api_demo PRIVATE
+    ${LOCALMIP_INCLUDE_DIRS}
+)
+
+target_link_libraries(model_api_demo PRIVATE
+    ${LOCALMIP_LIB}
+    Threads::Threads
+)
+
 # Set output directories
 set_target_properties(simple_api_demo PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/simple-api
@@ -175,6 +189,10 @@ set_target_properties(neighbor_config_demo PROPERTIES
 
 set_target_properties(neighbor_userdata_demo PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/neighbor-userdata
+)
+
+set_target_properties(model_api_demo PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/model-api
 )
 
 message(STATUS "LocalMIP library: ${LOCALMIP_LIB}")

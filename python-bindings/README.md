@@ -51,6 +51,22 @@ solver.run()
 print("Feasible:", solver.is_feasible(), "Obj:", solver.get_obj_value())
 ```
 
+## Model API (Programmatic Modeling)
+The bindings also expose Local-MIP's **Model API**, which lets you build a model
+directly in Python (mirrors `example/model-api/model_api_demo.cpp`).
+
+Run the demo:
+```bash
+python3 python-bindings/model_api_demo.py
+```
+
+Key symbols:
+- `lm.Sense.{minimize,maximize}`
+- `lm.VarType.{binary,general_integer,real,fixed}`
+- `LocalMIP.enable_model_api()`
+- `LocalMIP.add_var(...)`, `LocalMIP.add_con(...)`
+- `LocalMIP.get_solution()`
+
 ## Notes
 - The module links against the static library at `build/libLocalMIP.a`; re-run `./build.sh` if the core changes.
 - Long-running `run()` releases the GIL; Python callbacks reacquire the GIL before execution.

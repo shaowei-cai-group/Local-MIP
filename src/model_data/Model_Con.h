@@ -65,6 +65,8 @@ public:
 
   inline void set_rhs(double p_rhs);
 
+  inline void set_coeff(size_t p_term_idx, double p_coeff);
+
   inline bool verify_empty_sat() const;
 
   inline void add_type(Con_Type p_type);
@@ -197,6 +199,11 @@ inline void Model_Con::add_type(Con_Type p_type)
 inline void Model_Con::set_rhs(double p_rhs)
 {
   m_rhs = p_rhs;
+}
+
+inline void Model_Con::set_coeff(size_t p_term_idx, double p_coeff)
+{
+  m_coeff_list[p_term_idx] = p_coeff;
 }
 
 inline void Model_Con::add_var(const size_t p_var_idx,
