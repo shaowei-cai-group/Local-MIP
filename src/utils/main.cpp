@@ -36,7 +36,6 @@ void signal_handler(int p_signal)
 int main(int argc, char* argv[])
 {
   INIT_ARGS;
-  g_paras.print_change();
   std::signal(SIGINT, signal_handler);
   std::signal(SIGTERM, signal_handler);
   try
@@ -72,33 +71,60 @@ int main(int argc, char* argv[])
     std::unique_ptr<Local_MIP> solver = std::make_unique<Local_MIP>();
     g_solver.store(solver.get(), std::memory_order_release);
     solver->set_model_file(model_file);
-    solver->set_time_limit(time_limit);
-    solver->set_bound_strengthen(bound_strengthen);
-    solver->set_log_obj(log_obj);
-    solver->set_random_seed(static_cast<uint32_t>(random_seed));
-    solver->set_feas_tolerance(feas_tolerance);
-    solver->set_opt_tolerance(opt_tolerance);
-    solver->set_zero_tolerance(zero_tolerance);
-    solver->set_start_method(start);
-    solver->set_weight_method(weight);
-    solver->set_lift_scoring_method(lift_scoring);
-    solver->set_neighbor_scoring_method(neighbor_scoring);
-    solver->set_restart_method(restart);
-    solver->set_restart_step(restart_step);
-    solver->set_weight_smooth_probability(smooth_prob);
-    solver->set_bms_unsat_con(static_cast<size_t>(bms_unsat_con));
-    solver->set_bms_mtm_unsat_op(static_cast<size_t>(bms_unsat_ops));
-    solver->set_bms_sat_con(static_cast<size_t>(bms_sat_con));
-    solver->set_bms_mtm_sat_op(static_cast<size_t>(bms_sat_ops));
-    solver->set_bms_flip_op(static_cast<size_t>(bms_flip_ops));
-    solver->set_bms_easy_op(static_cast<size_t>(bms_easy_ops));
-    solver->set_bms_random_op(static_cast<size_t>(bms_random_ops));
-    solver->set_tabu_base(static_cast<size_t>(tabu_base));
-    solver->set_activity_period(static_cast<size_t>(activity_period));
-    solver->set_tabu_variation(static_cast<size_t>(tabu_variation));
-    solver->set_break_eq_feas(break_eq_feas != 0);
-    solver->set_split_eq(split_eq != 0);
-    solver->set_sol_path(sol_path);
+    if (time_limit != 10.0)
+      solver->set_time_limit(time_limit);
+    if (bound_strengthen != 1)
+      solver->set_bound_strengthen(bound_strengthen);
+    if (log_obj != 1)
+      solver->set_log_obj(log_obj != 0);
+    if (random_seed != 0)
+      solver->set_random_seed(static_cast<uint32_t>(random_seed));
+    if (feas_tolerance != 1e-6)
+      solver->set_feas_tolerance(feas_tolerance);
+    if (opt_tolerance != 1e-4)
+      solver->set_opt_tolerance(opt_tolerance);
+    if (zero_tolerance != 1e-9)
+      solver->set_zero_tolerance(zero_tolerance);
+    if (start != "zero")
+      solver->set_start_method(start);
+    if (weight != "monotone")
+      solver->set_weight_method(weight);
+    if (lift_scoring != "lift_age")
+      solver->set_lift_scoring_method(lift_scoring);
+    if (neighbor_scoring != "progress_bonus")
+      solver->set_neighbor_scoring_method(neighbor_scoring);
+    if (restart != "best")
+      solver->set_restart_method(restart);
+    if (restart_step != 1000000)
+      solver->set_restart_step(restart_step);
+    if (smooth_prob != 1)
+      solver->set_weight_smooth_probability(smooth_prob);
+    if (bms_unsat_con != 12)
+      solver->set_bms_unsat_con(static_cast<size_t>(bms_unsat_con));
+    if (bms_unsat_ops != 2250)
+      solver->set_bms_mtm_unsat_op(static_cast<size_t>(bms_unsat_ops));
+    if (bms_sat_con != 1)
+      solver->set_bms_sat_con(static_cast<size_t>(bms_sat_con));
+    if (bms_sat_ops != 80)
+      solver->set_bms_mtm_sat_op(static_cast<size_t>(bms_sat_ops));
+    if (bms_flip_ops != 0)
+      solver->set_bms_flip_op(static_cast<size_t>(bms_flip_ops));
+    if (bms_easy_ops != 5)
+      solver->set_bms_easy_op(static_cast<size_t>(bms_easy_ops));
+    if (bms_random_ops != 250)
+      solver->set_bms_random_op(static_cast<size_t>(bms_random_ops));
+    if (tabu_base != 4)
+      solver->set_tabu_base(static_cast<size_t>(tabu_base));
+    if (activity_period != 100000)
+      solver->set_activity_period(static_cast<size_t>(activity_period));
+    if (tabu_variation != 7)
+      solver->set_tabu_variation(static_cast<size_t>(tabu_variation));
+    if (break_eq_feas != 0)
+      solver->set_break_eq_feas(true);
+    if (split_eq != 1)
+      solver->set_split_eq(false);
+    if (!sol_path.empty())
+      solver->set_sol_path(sol_path);
     solver->run();
     g_solver.store(nullptr, std::memory_order_release);
     return 0;

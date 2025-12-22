@@ -306,6 +306,7 @@ void Local_MIP::set_break_eq_feas(bool p_enable)
 
 void Local_MIP::run()
 {
+  printf("c welcome to Local-MIP solver\n");
   if (m_use_model_api)
     m_model_api->build_model(*m_model_manager);
   else
