@@ -12,9 +12,9 @@
 =====================================================================================*/
 
 #include "../model_data/Model_Manager.h"
+#include "../utils/global_defs.h"
+#include "../utils/solver_error.h"
 #include "Model_API.h"
-#include "utils/global_defs.h"
-#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -256,6 +256,10 @@ void Model_API::add_vars_to_constraint(
 
 void Model_API::build_model(Model_Manager& p_model_manager)
 {
+  if (p_model_manager.var_num() != 0 || p_model_manager.con_num() != 0)
+    throw Solver_Error("Model_API::build_model: Model_Manager must be "
+                       "empty; build once and "
+                       "run once");
   printf("Building model with %zu variables and %zu constraints...\n",
          m_var_num,
          m_con_num);
@@ -264,7 +268,6 @@ void Model_API::build_model(Model_Manager& p_model_manager)
   if (m_obj_offset != 0.0)
     p_model_manager.add_obj_offset(m_obj_offset);
   size_t obj_idx = p_model_manager.make_con("");
-  assert(obj_idx == 0);
   p_model_manager.set_obj_name("obj");
   std::vector<size_t> api_to_mgr_idx(m_vars.size());
   for (size_t i = 0; i < m_vars.size(); ++i)
@@ -296,12 +299,8 @@ void Model_API::build_model(Model_Manager& p_model_manager)
   {
     const auto& con = m_cons[i];
     if (con.m_var_indices.empty())
-    {
-      fprintf(stderr,
-              "Warning: Constraint %zu has no variables, skipping...\n",
-              i);
-      continue;
-    }
+      throw Solver_Error(
+          "Model_API::build_model: empty constraints are not supported");
     std::string con_name = "__api_c" + std::to_string(i);
     bool lb_is_inf = (con.m_lb <= k_neg_inf);
     bool ub_is_inf = (con.m_ub >= k_inf);

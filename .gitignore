@@ -2,3 +2,5 @@
 .claude/
 build/
 .cache/
+AGENTS.md
+.clangd

@@ -109,6 +109,8 @@ If you want to **build a MIP model from code** (instead of reading `.mps/.lp`), 
 - **C++ demo**: `example/model-api/model_api_demo.cpp` (see `example/model-api/README.md`)
 - **Python demo**: `python-bindings/model_api_demo.py` (requires the pybind11 module)
 
+Important: Model API usage is single-run. Build the model once, call `run` once, and do not add variables/constraints after `run`. To solve again, create a new model instance.
+
 Build & run (one-time):
 ```bash
 # Build core + all examples + python bindings
