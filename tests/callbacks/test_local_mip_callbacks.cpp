@@ -126,7 +126,7 @@ bool test_start_cbk_invocation()
   std::mt19937 random_engine(1);
   Start::Start_Ctx context(shared.view, var_values, random_engine);
 
-  solver.m_local_search->m_start.set_up_start_values(context);
+  solver.m_local_search->m_start.set_up_start_values(context, {});
 
   bool ok = true;
   ok &= check(invoked, "start callback should be invoked");

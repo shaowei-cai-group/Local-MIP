@@ -154,9 +154,9 @@ public:
 
   void add_custom_neighbor(const std::string& p_neighbor_name,
                            Local_Search::Neighbor_Cbk p_neighbor_cbk,
-                           void* p_user_data = nullptr);
+                           void* p_user_data = nullptr) const;
 
-  void reset_default_neighbor_list();
+  void reset_default_neighbor_list() const;
 
   void set_tabu_base(size_t p_value);
 

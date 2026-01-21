@@ -244,7 +244,9 @@ public:
 
   ~Local_Search();
 
-  int run_search();
+  void set_current_value(size_t index, double value);
+
+  int run_search(std::vector<double>& solution);
 
   void output_result() const;
 

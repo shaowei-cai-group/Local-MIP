@@ -65,9 +65,14 @@ void Start::set_method(const std::string& p_method_name)
   }
 }
 
-void Start::set_up_start_values(Start_Ctx& p_ctx) const
+void Start::set_up_start_values(Start_Ctx& p_ctx, std::vector<double>& solution) const
 {
-  if (m_user_cbk)
+  if (!solution.empty())
+  {
+    for (int var_idx = 0; var_idx < solution.size(); ++var_idx)
+      p_ctx.m_var_current_value [var_idx] = solution[var_idx];
+  }
+  else if (m_user_cbk)
     m_user_cbk(p_ctx, m_user_data);
   else if (m_default_method == Method::random)
     random_start(p_ctx);

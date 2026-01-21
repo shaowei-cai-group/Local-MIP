@@ -136,6 +136,8 @@ public:
 
   inline size_t var_id_to_obj_idx(const size_t p_var_idx) const;
 
+  inline std::unordered_map<std::string, size_t> get_mapping() const;
+
   inline bool exists_var(const std::string& p_name) const;
 
   inline size_t con_idx(const std::string& p_name) const;
@@ -218,6 +220,11 @@ inline size_t Model_Manager::var_id_to_obj_idx(size_t p_var_idx) const
 {
   assert(p_var_idx < m_var_idx_to_obj_idx.size());
   return m_var_idx_to_obj_idx[p_var_idx];
+}
+
+inline std::unordered_map<std::string, size_t> Model_Manager::get_mapping() const
+{
+  return m_var_name_to_idx;
 }
 
 inline bool Model_Manager::exists_var(const std::string& p_name) const

@@ -13,7 +13,7 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 find_package(Threads REQUIRED)
 
-file(GLOB_RECURSE LIB_SOURCES CONFIGURE_DEPENDS "src/*.cpp" "src/*.cc")
+file(GLOB_RECURSE LIB_SOURCES CONFIGURE_DEPENDS "src/*.cpp" "src/*.cc" "src/*.hpp")
 list(REMOVE_ITEM LIB_SOURCES "${PROJECT_SOURCE_DIR}/src/utils/main.cpp")
 
 add_library(LocalMIP STATIC ${LIB_SOURCES})
@@ -33,7 +33,7 @@ target_compile_options(LocalMIP PUBLIC
 )
 
 target_link_libraries(LocalMIP PUBLIC
-  Threads::Threads
+        Threads::Threads
 )
 
 add_executable(${PROJECT_NAME} src/utils/main.cpp)
