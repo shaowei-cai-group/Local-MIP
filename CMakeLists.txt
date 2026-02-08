@@ -27,6 +27,7 @@ target_include_directories(LocalMIP PUBLIC
 target_compile_definitions(LocalMIP PUBLIC $<$<CONFIG:Debug>:DEBUG>)
 
 target_compile_options(LocalMIP PUBLIC
+  -fPIC
   $<$<CONFIG:Debug>:-g>
   $<$<CONFIG:Release>:-O3>
 )
