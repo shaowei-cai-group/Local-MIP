@@ -28,7 +28,7 @@ target_compile_definitions(LocalMIP PUBLIC $<$<CONFIG:Debug>:DEBUG>)
 
 target_compile_options(LocalMIP PUBLIC
   $<$<CONFIG:Debug>:-g>
-  $<$<CONFIG:Release>:-O3 -DNDEBUG -flto -march=native>
+  $<$<CONFIG:Release>:-O3>
 )
 
 target_link_libraries(LocalMIP PUBLIC
