@@ -12,7 +12,7 @@ Although Local-MIP is freely available under the MIT license, we would be please
 
 ## Version History
 
-**Note:** Local-MIP 1.0 has been archived and is available in `archive/Local-MIP-1.0/`. The experimental results reported in the referenced papers (CP 2024 and Artificial Intelligence 2025) were obtained using Local-MIP 1.0.
+**Note:** Local-MIP 1.0 has been archived and is available in [Releases v1.0.1](https://github.com/shaowei-cai-group/Local-MIP/releases/tag/v1.0.1). The experimental results reported in the referenced papers (CP 2024 and Artificial Intelligence 2025) were obtained using Local-MIP 1.0.
 
 ## Repository Layout
 - `src/` – solver entry (`src/local_mip/Local_MIP.cpp`), CLI wrapper (`src/utils/main.cpp`), search logic (`src/local_search/`), parsing (`src/reader/`), and model utilities (`src/model_data/`).
