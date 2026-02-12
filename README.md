@@ -171,7 +171,7 @@ The module (`localmip_py*.so`) links against the core static library. The sample
 ## Reference
 If you use **Local-MIP** in an academic context, please cite the following articles:
 
-**Important:** The experimental results reported in the papers below were obtained using Local-MIP 1.0, which has been archived in `archive/Local-MIP-1.0/`.
+**Important:** The experimental results reported in the papers below were obtained using Local-MIP 1.0 (GitHub release [v1.0.1](https://github.com/shaowei-cai-group/Local-MIP/releases/tag/v1.0.1)).
 
 1. **Journal Version (Artificial Intelligence, 2025)**  
    Peng Lin, Shaowei Cai, Mengchuan Zou, Jinkun Lin,  
