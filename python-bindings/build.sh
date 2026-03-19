@@ -57,8 +57,11 @@ fi
 rm -rf "${BIND_BUILD}"
 mkdir -p "${BIND_BUILD}"
 echo "==> Configuring bindings..."
+PYBIND11_CMAKE_DIR="$("${PY_EXE}" -c 'import pybind11; print(pybind11.get_cmake_dir())' 2>/dev/null || true)"
+
 cmake -S "${BIND_DIR}" -B "${BIND_BUILD}" \
   -DPYTHON_EXECUTABLE="${PY_EXE}" \
+  ${PYBIND11_CMAKE_DIR:+-Dpybind11_DIR="${PYBIND11_CMAKE_DIR}"} \
   -Wno-dev
 
 # 3) Build bindings
