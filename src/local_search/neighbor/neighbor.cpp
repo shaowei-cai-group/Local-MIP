@@ -40,6 +40,29 @@ Neighbor::Neighbor_Ctx::Neighbor_Ctx(const Readonly_Ctx& p_shared,
 {
 }
 
+void Neighbor::Neighbor_Ctx::clear_ops()
+{
+  m_op_var_idxs.clear();
+  m_op_var_deltas.clear();
+  m_op_size = 0;
+}
+
+void Neighbor::Neighbor_Ctx::set_single_op(size_t p_var_idx, double p_delta)
+{
+  m_op_var_idxs.clear();
+  m_op_var_deltas.clear();
+  m_op_var_idxs.push_back(p_var_idx);
+  m_op_var_deltas.push_back(p_delta);
+  m_op_size = 1;
+}
+
+void Neighbor::Neighbor_Ctx::append_op(size_t p_var_idx, double p_delta)
+{
+  m_op_var_idxs.push_back(p_var_idx);
+  m_op_var_deltas.push_back(p_delta);
+  m_op_size = m_op_var_idxs.size();
+}
+
 Neighbor::Neighbor(const std::string& p_neighbor_name,
                    size_t p_bms_con,
                    size_t p_bms_op)

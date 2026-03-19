@@ -72,9 +72,9 @@ void smart_flip_neighbor(Neighbor::Neighbor_Ctx& ctx, void* p_user_data)
   // Set operation: flip best variable
   if (best_var_idx != SIZE_MAX)
   {
-    ctx.m_op_size = 1;
-    ctx.m_op_var_idxs[0] = best_var_idx;
-    ctx.m_op_var_deltas[0] = (ctx.m_shared.m_var_current_value[best_var_idx] < 0.5) ? 1.0 : -1.0;
+    double delta =
+        (ctx.m_shared.m_var_current_value[best_var_idx] < 0.5) ? 1.0 : -1.0;
+    ctx.set_single_op(best_var_idx, delta);
 
     if (stats)
     {
@@ -93,7 +93,7 @@ void greedy_gradient_neighbor(Neighbor::Neighbor_Ctx& ctx, void* p_user_data)
   // Only operate in feasible phase
   if (!ctx.m_shared.m_is_found_feasible)
   {
-    ctx.m_op_size = 0;
+    ctx.clear_ops();
     if (stats) stats->failed_ops++;
     return;
   }
@@ -137,9 +137,7 @@ void greedy_gradient_neighbor(Neighbor::Neighbor_Ctx& ctx, void* p_user_data)
   // Set operation
   if (best_var_idx != SIZE_MAX)
   {
-    ctx.m_op_size = 1;
-    ctx.m_op_var_idxs[0] = best_var_idx;
-    ctx.m_op_var_deltas[0] = best_delta;
+    ctx.set_single_op(best_var_idx, best_delta);
 
     if (stats)
     {
@@ -184,9 +182,12 @@ The neighbor receives `Neighbor::Neighbor_Ctx` with:
 | Member | Type | Access | Description |
 |--------|------|--------|-------------|
 | **Outputs** | | | |
-| `m_op_size` | `size_t&` | W | Number of variables in move (0-N) |
-| `m_op_var_idxs` | `size_t[]` | W | Variable indices to change |
-| `m_op_var_deltas` | `double[]` | W | Delta values for each variable |
+| `clear_ops()` | method | W | Clear the current move output |
+| `set_single_op(var_idx, delta)` | method | W | Replace output with one variable move |
+| `append_op(var_idx, delta)` | method | W | Append one variable move to a multi-variable operation |
+| `m_op_size` | `size_t&` | W | Number of variables in move after helper updates |
+| `m_op_var_idxs` | `vector<size_t>&` | W | Variable indices emitted by the helper methods |
+| `m_op_var_deltas` | `vector<double>&` | W | Delta values emitted by the helper methods |
 | **Inputs** | | | |
 | `m_rng` | `mt19937&` | R/W | Random number generator |
 | `m_shared.m_var_current_value` | `vector<double>` | R | Current variable values |
@@ -200,9 +201,10 @@ The neighbor receives `Neighbor::Neighbor_Ctx` with:
 
 ```bash
 cd example/neighbor-userdata
-g++ -O3 -std=c++20 neighbor_userdata.cpp -I../../src -L../../build -lLocalMIP -lpthread -o neighbor_userdata_demo
+g++ -O3 -std=c++20 neighbor_userdata.cpp -I.. -I../../src -L../../build -lLocalMIP -lpthread -o neighbor_userdata_demo
 ./neighbor_userdata_demo
 ```
+The demo resolves the bundled sample instance from either `example/` or `example/neighbor-userdata/`. Pass a custom instance path as `argv[1]` to override it.
 
 ## Expected Output
 
@@ -238,8 +240,8 @@ Objective: -45.000000
 ## Key Points
 
 1. **Function Signature**: `void neighbor(Neighbor::Neighbor_Ctx& ctx, void* user_data)`
-2. **Operation Output**: Set `ctx.m_op_size` and fill `m_op_var_idxs[]`, `m_op_var_deltas[]`
-3. **No Operation**: Set `ctx.m_op_size = 0` if no move found
+2. **Operation Output**: Use `ctx.set_single_op(...)` or `ctx.append_op(...)` to build moves safely
+3. **No Operation**: Use `ctx.clear_ops()` if no move is found
 4. **Multi-Variable Moves**: Can modify multiple variables in one operation
 5. **User Data**: Pass any structure via `void*` pointer (shared across calls)
 6. **Mix Operations**: Can combine custom and predefined neighbors

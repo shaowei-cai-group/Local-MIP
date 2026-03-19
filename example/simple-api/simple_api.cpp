@@ -14,13 +14,24 @@
 
 =====================================================================================*/
 
+#include "example_paths.h"
 #include "local_mip/Local_MIP.h"
 #include <cstdio>
 
-int main()
+namespace
 {
+
+constexpr const char kDefaultModelFile[] = "test-set/2club200v15p5scn.mps";
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+  const std::string model_file = example_paths::resolve_demo_model_path_or_exit(
+      argc, argv, kDefaultModelFile);
+
   Local_MIP solver;
-  solver.set_model_file("test-set/2club200v15p5scn.mps");
+  solver.set_model_file(model_file);
   solver.set_sol_path("example_simple.sol");
   solver.set_time_limit(60.0);
   solver.set_log_obj(true);

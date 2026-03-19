@@ -3,13 +3,11 @@ Python demo for Local-MIP Model API (programmatic model building).
 This mirrors example/model-api/model_api_demo.cpp.
 
 Build the module first:
-  cmake -S python-bindings -B python-bindings/build \
-    -DPYTHON_EXECUTABLE="$(python3 -c 'import sys;print(sys.executable)')" \
-    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -Wno-dev
-  cmake --build python-bindings/build
+  PY_EXE="$(python3 -c 'import sys; print(sys.executable)')"
+  PYTHON_EXECUTABLE="${PY_EXE}" python-bindings/build.sh
 
 Run:
-  python3 python-bindings/model_api_demo.py
+  "${PY_EXE}" python-bindings/model_api_demo.py
 """
 
 import math

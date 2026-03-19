@@ -20,15 +20,22 @@ def main():
     solver.set_time_limit(5.0)
     solver.set_log_obj(True)
 
-    # Optional: simple start callback (no-op)
-    def start_cbk(ctx_capsule):
-        # ctx_capsule is an opaque pointer; extend bindings if you need fields.
-        return
+    stats = {"calls": 0}
 
-    solver.set_start_cbk(start_cbk)
+    # Optional: structured start callback with Python-side state.
+    def start_cbk(ctx, user_data):
+        user_data["calls"] += 1
+        binary_idxs = ctx.shared.binary_idx_list
+        if not binary_idxs:
+            return
+        pick = ctx.rng.randint(0, len(binary_idxs) - 1)
+        ctx.current_values[binary_idxs[pick]] = 1.0
+
+    solver.set_start_cbk(start_cbk, stats)
 
     solver.run()
     print("Feasible:", solver.is_feasible())
+    print("Start callback calls:", stats["calls"])
     if solver.is_feasible():
         print("Objective:", solver.get_obj_value())
         print("Solution written to py_example.sol")

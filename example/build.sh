@@ -11,6 +11,24 @@ set -e  # Exit immediately on error
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+get_parallel_jobs() {
+    if command -v nproc >/dev/null 2>&1; then
+        nproc
+        return
+    fi
+    if command -v sysctl >/dev/null 2>&1; then
+        sysctl -n hw.logicalcpu 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1
+        return
+    fi
+    if command -v getconf >/dev/null 2>&1; then
+        getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
+        return
+    fi
+    echo 1
+}
+
+PARALLEL_JOBS=$(get_parallel_jobs)
+
 # Color definitions
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -43,9 +61,14 @@ clean_build() {
 
     # Clean executables in example directories
     for demo in simple-api start-callback restart-callback weight-callback \
-                scoring-lift scoring-neighbor neighbor-config neighbor-userdata; do
+                scoring-lift scoring-neighbor neighbor-config neighbor-userdata \
+                model-api; do
         if [ -d "$demo" ]; then
-            find "$demo" -type f -executable -name "*_demo" -delete
+            while IFS= read -r -d '' file; do
+                if [ -x "$file" ]; then
+                    rm -f "$file"
+                fi
+            done < <(find "$demo" -type f -name "*_demo" -print0)
             print_green "Cleaned $demo/ directory"
         fi
     done
@@ -90,7 +113,7 @@ cmake .. || {
 
 # Compile
 print_yellow "Compiling example programs..."
-make -j$(nproc) || {
+make -j"${PARALLEL_JOBS}" || {
     print_red "Compilation failed!"
     exit 1
 }
@@ -113,6 +136,7 @@ demos=(
     "scoring-neighbor/neighbor_random_demo"
     "neighbor-config/neighbor_config_demo"
     "neighbor-userdata/neighbor_userdata_demo"
+    "model-api/model_api_demo"
 )
 
 for demo in "${demos[@]}"; do

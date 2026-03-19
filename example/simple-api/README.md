@@ -45,7 +45,7 @@ From the project root directory:
 
 ```bash
 cd example/simple-api
-g++ -O3 -std=c++20 simple_api.cpp -I../../src -L../../build -lLocalMIP -lpthread -o simple_api_demo
+g++ -O3 -std=c++20 simple_api.cpp -I.. -I../../src -L../../build -lLocalMIP -lpthread -o simple_api_demo
 ```
 
 Or use the example build script if available.
@@ -55,6 +55,7 @@ Or use the example build script if available.
 ```bash
 ./simple_api_demo
 ```
+The demo resolves the bundled sample instance from either `example/` or `example/simple-api/`. Pass a custom instance path as `argv[1]` to override it.
 
 ## Expected Output
 

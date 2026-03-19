@@ -29,6 +29,11 @@ else()
     )
 endif()
 
+set(EXAMPLE_INCLUDE_DIRS
+    ${LOCALMIP_INCLUDE_DIRS}
+    ${CMAKE_SOURCE_DIR}
+)
+
 # Find pthread (LocalMIP unique dependency)
 find_package(Threads REQUIRED)
 
@@ -38,7 +43,7 @@ add_executable(simple_api_demo
 )
 
 target_include_directories(simple_api_demo PRIVATE
-    ${LOCALMIP_INCLUDE_DIRS}
+    ${EXAMPLE_INCLUDE_DIRS}
 )
 
 target_link_libraries(simple_api_demo PRIVATE
@@ -52,7 +57,7 @@ add_executable(start_callback_demo
 )
 
 target_include_directories(start_callback_demo PRIVATE
-    ${LOCALMIP_INCLUDE_DIRS}
+    ${EXAMPLE_INCLUDE_DIRS}
 )
 
 target_link_libraries(start_callback_demo PRIVATE
@@ -66,7 +71,7 @@ add_executable(restart_callback_demo
 )
 
 target_include_directories(restart_callback_demo PRIVATE
-    ${LOCALMIP_INCLUDE_DIRS}
+    ${EXAMPLE_INCLUDE_DIRS}
 )
 
 target_link_libraries(restart_callback_demo PRIVATE
@@ -80,7 +85,7 @@ add_executable(weight_callback_demo
 )
 
 target_include_directories(weight_callback_demo PRIVATE
-    ${LOCALMIP_INCLUDE_DIRS}
+    ${EXAMPLE_INCLUDE_DIRS}
 )
 
 target_link_libraries(weight_callback_demo PRIVATE
@@ -94,7 +99,7 @@ add_executable(lift_degree_demo
 )
 
 target_include_directories(lift_degree_demo PRIVATE
-    ${LOCALMIP_INCLUDE_DIRS}
+    ${EXAMPLE_INCLUDE_DIRS}
 )
 
 target_link_libraries(lift_degree_demo PRIVATE
@@ -108,7 +113,7 @@ add_executable(neighbor_random_demo
 )
 
 target_include_directories(neighbor_random_demo PRIVATE
-    ${LOCALMIP_INCLUDE_DIRS}
+    ${EXAMPLE_INCLUDE_DIRS}
 )
 
 target_link_libraries(neighbor_random_demo PRIVATE
@@ -122,7 +127,7 @@ add_executable(neighbor_config_demo
 )
 
 target_include_directories(neighbor_config_demo PRIVATE
-    ${LOCALMIP_INCLUDE_DIRS}
+    ${EXAMPLE_INCLUDE_DIRS}
 )
 
 target_link_libraries(neighbor_config_demo PRIVATE
@@ -136,7 +141,7 @@ add_executable(neighbor_userdata_demo
 )
 
 target_include_directories(neighbor_userdata_demo PRIVATE
-    ${LOCALMIP_INCLUDE_DIRS}
+    ${EXAMPLE_INCLUDE_DIRS}
 )
 
 target_link_libraries(neighbor_userdata_demo PRIVATE
@@ -150,7 +155,7 @@ add_executable(model_api_demo
 )
 
 target_include_directories(model_api_demo PRIVATE
-    ${LOCALMIP_INCLUDE_DIRS}
+    ${EXAMPLE_INCLUDE_DIRS}
 )
 
 target_link_libraries(model_api_demo PRIVATE
@@ -197,3 +202,4 @@ set_target_properties(model_api_demo PROPERTIES
 
 message(STATUS "LocalMIP library: ${LOCALMIP_LIB}")
 message(STATUS "LocalMIP include directories: ${LOCALMIP_INCLUDE_DIRS}")
+message(STATUS "Example include directories: ${EXAMPLE_INCLUDE_DIRS}")

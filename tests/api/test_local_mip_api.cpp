@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <memory>
 #include <string>
 #include <thread>
@@ -317,6 +318,155 @@ bool test_parameter_file_loading()
   return ok;
 }
 
+bool test_library_parameter_file_loading()
+{
+  const char* config_file = "tmp_library_params.set";
+  std::FILE* fp = std::fopen(config_file, "w");
+  if (fp == nullptr)
+  {
+    std::fprintf(stderr,
+                 "ERROR: failed to create temporary library config file\n");
+    return false;
+  }
+
+  std::fprintf(fp, "time_limit = 33\n");
+  std::fprintf(fp, "model_file %s\n", TEST_MPS_PATH);
+  std::fprintf(fp, "bms_unsat_con 88\n");
+  std::fprintf(fp, "bms_random_ops = 199\n");
+  std::fprintf(fp, "sol_path config.sol\n");
+  std::fprintf(fp, "tabu_base 7\n");
+  std::fprintf(fp, "split_eq 1\n");
+  std::fclose(fp);
+
+  Local_MIP solver;
+  solver.set_bms_sat_con(41);
+  solver.set_model_file(TEST_LP_PATH);
+  solver.set_param_set_file(config_file);
+
+  bool ok = true;
+  ok &= check(solver.m_param_set_file == std::string(config_file),
+              "set_param_set_file should record the loaded path");
+  ok &= check(std::fabs(solver.m_time_limit - 33.0) < 1e-9,
+              "set_param_set_file should apply time_limit");
+  ok &= check(solver.m_model_file == std::string(TEST_MPS_PATH),
+              "set_param_set_file should apply model_file");
+  ok &= check(solver.m_local_search->m_bms_unsat_con == 88,
+              "set_param_set_file should apply bms_unsat_con");
+  ok &= check(solver.m_local_search->m_bms_random_op == 199,
+              "set_param_set_file should apply bms_random_ops");
+  ok &= check(solver.m_local_search->m_sol_path == std::string("config.sol"),
+              "set_param_set_file should apply sol_path");
+  ok &= check(solver.m_local_search->m_tabu_base == 7,
+              "set_param_set_file should apply tabu_base");
+  ok &= check(solver.m_model_manager->m_split_eq,
+              "set_param_set_file should apply split_eq");
+  ok &= check(solver.m_local_search->m_bms_sat_con == 41,
+              "set_param_set_file should not reset unspecified values");
+
+  solver.set_time_limit(4.5);
+  ok &= check(std::fabs(solver.m_time_limit - 4.5) < 1e-9,
+              "later setters should override file-loaded values");
+
+  std::remove(config_file);
+  return ok;
+}
+
+bool test_library_parameter_file_errors()
+{
+  Local_MIP solver;
+  solver.set_time_limit(1.25);
+
+  bool ok = true;
+  bool missing_file_threw = false;
+  try
+  {
+    solver.set_param_set_file("tmp_missing_library_params.set");
+  }
+  catch (const std::exception& ex)
+  {
+    missing_file_threw =
+        std::string(ex.what()).find("cannot open parameter set file") !=
+        std::string::npos;
+  }
+
+  ok &= check(missing_file_threw,
+              "missing parameter file should raise an exception");
+  ok &= check(std::fabs(solver.m_time_limit - 1.25) < 1e-9,
+              "failed parameter-file loads should not mutate solver state");
+  ok &= check(solver.m_param_set_file.empty(),
+              "failed parameter-file loads should not record a path");
+
+  const char* invalid_config_file = "tmp_invalid_library_params.set";
+  std::FILE* fp = std::fopen(invalid_config_file, "w");
+  if (fp == nullptr)
+  {
+    std::fprintf(stderr,
+                 "ERROR: failed to create invalid temporary config file\n");
+    return false;
+  }
+  std::fprintf(fp, "time_limit = nope\n");
+  std::fclose(fp);
+
+  bool invalid_file_threw = false;
+  try
+  {
+    solver.set_param_set_file(invalid_config_file);
+  }
+  catch (const std::exception& ex)
+  {
+    invalid_file_threw =
+        std::string(ex.what()).find(
+            "invalid floating value 'nope' for parameter 'time_limit'") !=
+        std::string::npos;
+  }
+
+  ok &= check(invalid_file_threw,
+              "malformed parameter files should raise an exception");
+  ok &= check(std::fabs(solver.m_time_limit - 1.25) < 1e-9,
+              "malformed parameter files should not partially apply values");
+  ok &= check(solver.m_param_set_file.empty(),
+              "malformed parameter files should not record a path");
+
+  std::remove(invalid_config_file);
+
+  const char* rejected_config_file = "tmp_rejected_library_params.set";
+  fp = std::fopen(rejected_config_file, "w");
+  if (fp == nullptr)
+  {
+    std::fprintf(stderr,
+                 "ERROR: failed to create rejected temporary config file\n");
+    return false;
+  }
+  std::fprintf(fp, "model_file %s\n", TEST_MPS_PATH);
+  std::fprintf(fp, "time_limit = 0\n");
+  std::fclose(fp);
+
+  solver.set_model_file(TEST_LP_PATH);
+  bool rejected_file_threw = false;
+  try
+  {
+    solver.set_param_set_file(rejected_config_file);
+  }
+  catch (const std::exception& ex)
+  {
+    rejected_file_threw =
+        std::string(ex.what()).find("time limit must be positive") !=
+        std::string::npos;
+  }
+
+  ok &= check(rejected_file_threw,
+              "setter-side validation failures should raise an exception");
+  ok &= check(std::fabs(solver.m_time_limit - 1.25) < 1e-9,
+              "setter-side failures should not partially apply values");
+  ok &= check(solver.m_model_file == std::string(TEST_LP_PATH),
+              "setter-side failures should leave earlier fields unchanged");
+  ok &= check(solver.m_param_set_file.empty(),
+              "setter-side failures should not record a path");
+
+  std::remove(rejected_config_file);
+  return ok;
+}
+
 } // namespace
 
 int main()
@@ -327,6 +477,8 @@ int main()
   ok &= test_prepare_reader_selection();
   ok &= test_run_with_timeout();
   ok &= test_parameter_file_loading();
+  ok &= test_library_parameter_file_loading();
+  ok &= test_library_parameter_file_errors();
 
   if (!ok)
   {

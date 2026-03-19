@@ -16,8 +16,16 @@
 
 =====================================================================================*/
 
+#include "example_paths.h"
 #include "local_mip/Local_MIP.h"
 #include <cstdio>
+
+namespace
+{
+
+constexpr const char kDefaultModelFile[] = "test-set/2club200v15p5scn.mps";
+
+} // namespace
 
 // Custom Neighbor: randomly flip binary variable
 void my_random_flip_neighbor(Neighbor::Neighbor_Ctx& ctx,
@@ -39,9 +47,7 @@ void my_random_flip_neighbor(Neighbor::Neighbor_Ctx& ctx,
   double delta = (current_value < 0.5) ? 1.0 : -1.0;
 
   // Set operation
-  ctx.m_op_size = 1;
-  ctx.m_op_var_idxs[0] = var_idx;
-  ctx.m_op_var_deltas[0] = delta;
+  ctx.set_single_op(var_idx, delta);
 }
 
 // Custom Neighbor: gradient descent (only for feasible phase)
@@ -98,21 +104,19 @@ void my_gradient_descent_neighbor(Neighbor::Neighbor_Ctx& ctx,
     double obj_cost = ctx.m_shared.m_var_obj_cost[best_var_idx];
     double delta = (obj_cost < 0) ? 1.0 : -1.0;
 
-    ctx.m_op_size = 1;
-    ctx.m_op_var_idxs[0] = best_var_idx;
-    ctx.m_op_var_deltas[0] = delta;
+    ctx.set_single_op(best_var_idx, delta);
   }
 }
 
 int main(int argc, char** argv)
 {
-  const char* instance_file =
-      (argc > 1) ? argv[1] : "test-set/2club200v15p5scn.mps";
+  const std::string model_file = example_paths::resolve_demo_model_path_or_exit(
+      argc, argv, kDefaultModelFile);
 
   printf("\n========== Example 1: Use default Neighbor list ==========\n");
   {
     Local_MIP solver;
-    solver.set_model_file(instance_file);
+    solver.set_model_file(model_file);
     solver.set_time_limit(10.0);
     solver.set_sol_path("example_neighbor_config.sol");
     // default list is：
@@ -128,7 +132,7 @@ int main(int argc, char** argv)
   printf("\n========== Example 2: Custom Neighbor order ==========\n");
   {
     Local_MIP solver;
-    solver.set_model_file(instance_file);
+    solver.set_model_file(model_file);
     solver.set_time_limit(10.0);
     solver.set_sol_path("example_neighbor_config.sol");
 
@@ -144,7 +148,7 @@ int main(int argc, char** argv)
   printf("\n========== Example 3: Add custom Neighbor ==========\n");
   {
     Local_MIP solver;
-    solver.set_model_file(instance_file);
+    solver.set_model_file(model_file);
     solver.set_time_limit(10.0);
     solver.set_sol_path("example_neighbor_config.sol");
 
@@ -160,7 +164,7 @@ int main(int argc, char** argv)
   printf("\n========== Example 4: Use custom Neighbor only ==========\n");
   {
     Local_MIP solver;
-    solver.set_model_file(instance_file);
+    solver.set_model_file(model_file);
     solver.set_time_limit(10.0);
     solver.set_sol_path("example_neighbor_config.sol");
 
@@ -177,7 +181,7 @@ int main(int argc, char** argv)
   printf("\n========== Example 5: Mix predefined and custom Neighbor ==========\n");
   {
     Local_MIP solver;
-    solver.set_model_file(instance_file);
+    solver.set_model_file(model_file);
     solver.set_time_limit(10.0);
     solver.set_sol_path("example_neighbor_config.sol");
 

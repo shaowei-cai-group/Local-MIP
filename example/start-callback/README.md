@@ -76,9 +76,10 @@ The callback receives `Start::Start_Ctx` with access to:
 
 ```bash
 cd example/start-callback
-g++ -O3 -std=c++20 start_callback.cpp -I../../src -L../../build -lLocalMIP -lpthread -o start_callback_demo
+g++ -O3 -std=c++20 start_callback.cpp -I.. -I../../src -L../../build -lLocalMIP -lpthread -o start_callback_demo
 ./start_callback_demo
 ```
+The demo resolves the bundled sample instance from either `example/` or `example/start-callback/`. Pass a custom instance path as `argv[1]` to override it.
 
 ## Expected Output
 

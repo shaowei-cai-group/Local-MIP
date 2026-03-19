@@ -17,6 +17,7 @@
 #include "../reader/LP_Reader.h"
 #include "../reader/MPS_Reader.h"
 #include "../utils/global_defs.h"
+#include "../utils/paras.h"
 #include "../utils/solver_error.h"
 #include "Local_MIP.h"
 #include <algorithm>
@@ -39,7 +40,8 @@
 #include <vector>
 
 Local_MIP::Local_MIP()
-    : m_model_file(""), m_time_limit(10.0), m_timeout_thread(),
+    : m_model_file(""), m_param_set_file(""), m_time_limit(10.0),
+      m_timeout_thread(),
       m_timeout_mutex(), m_timeout_cv(), m_cancel_timeout(true),
       m_obj_log_thread(), m_stop_obj_log(true), m_log_obj_enabled(true),
       m_reader(nullptr),
@@ -62,6 +64,77 @@ void Local_MIP::set_model_file(const std::string& p_model_file)
 {
   m_model_file = p_model_file;
   printf("c model file is set to : %s\n", m_model_file.c_str());
+}
+
+void Local_MIP::set_param_set_file(const std::string& p_param_set_file)
+{
+  if (p_param_set_file.empty())
+    throw std::invalid_argument("parameter set file path is empty");
+
+  Paras params;
+  params.load_from_file(p_param_set_file, false);
+
+  if (params.has_loaded_param("time_limit") && params.time_limit <= 0.0)
+    throw std::invalid_argument("time limit must be positive");
+
+  if (params.has_loaded_param("model_file"))
+    set_model_file(params.model_file);
+  if (params.has_loaded_param("sol_path"))
+    set_sol_path(params.sol_path);
+  if (params.has_loaded_param("time_limit"))
+    set_time_limit(params.time_limit);
+  if (params.has_loaded_param("random_seed"))
+    set_random_seed(static_cast<uint32_t>(params.random_seed));
+  if (params.has_loaded_param("feas_tolerance"))
+    set_feas_tolerance(params.feas_tolerance);
+  if (params.has_loaded_param("opt_tolerance"))
+    set_opt_tolerance(params.opt_tolerance);
+  if (params.has_loaded_param("zero_tolerance"))
+    set_zero_tolerance(params.zero_tolerance);
+  if (params.has_loaded_param("bound_strengthen"))
+    set_bound_strengthen(params.bound_strengthen);
+  if (params.has_loaded_param("log_obj"))
+    set_log_obj(params.log_obj != 0);
+  if (params.has_loaded_param("restart_step"))
+    set_restart_step(static_cast<size_t>(params.restart_step));
+  if (params.has_loaded_param("smooth_prob"))
+    set_weight_smooth_probability(static_cast<size_t>(params.smooth_prob));
+  if (params.has_loaded_param("bms_unsat_con"))
+    set_bms_unsat_con(static_cast<size_t>(params.bms_unsat_con));
+  if (params.has_loaded_param("bms_unsat_ops"))
+    set_bms_mtm_unsat_op(static_cast<size_t>(params.bms_unsat_ops));
+  if (params.has_loaded_param("bms_sat_con"))
+    set_bms_sat_con(static_cast<size_t>(params.bms_sat_con));
+  if (params.has_loaded_param("bms_sat_ops"))
+    set_bms_mtm_sat_op(static_cast<size_t>(params.bms_sat_ops));
+  if (params.has_loaded_param("bms_flip_ops"))
+    set_bms_flip_op(static_cast<size_t>(params.bms_flip_ops));
+  if (params.has_loaded_param("bms_easy_ops"))
+    set_bms_easy_op(static_cast<size_t>(params.bms_easy_ops));
+  if (params.has_loaded_param("bms_random_ops"))
+    set_bms_random_op(static_cast<size_t>(params.bms_random_ops));
+  if (params.has_loaded_param("tabu_base"))
+    set_tabu_base(static_cast<size_t>(params.tabu_base));
+  if (params.has_loaded_param("tabu_var"))
+    set_tabu_variation(static_cast<size_t>(params.tabu_var));
+  if (params.has_loaded_param("activity_period"))
+    set_activity_period(static_cast<size_t>(params.activity_period));
+  if (params.has_loaded_param("break_eq_feas"))
+    set_break_eq_feas(params.break_eq_feas != 0);
+  if (params.has_loaded_param("split_eq"))
+    set_split_eq(params.split_eq != 0);
+  if (params.has_loaded_param("start"))
+    set_start_method(params.start);
+  if (params.has_loaded_param("restart"))
+    set_restart_method(params.restart);
+  if (params.has_loaded_param("weight"))
+    set_weight_method(params.weight);
+  if (params.has_loaded_param("lift_scoring"))
+    set_lift_scoring_method(params.lift_scoring);
+  if (params.has_loaded_param("neighbor_scoring"))
+    set_neighbor_scoring_method(params.neighbor_scoring);
+
+  m_param_set_file = p_param_set_file;
 }
 
 void Local_MIP::set_time_limit(double p_time_limit)

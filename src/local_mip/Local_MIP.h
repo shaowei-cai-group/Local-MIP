@@ -32,6 +32,8 @@ class Local_MIP
 private:
   std::string m_model_file;
 
+  std::string m_param_set_file;
+
   double m_time_limit;
 
   std::thread m_timeout_thread;
@@ -78,6 +80,8 @@ public:
   ~Local_MIP();
 
   void set_model_file(const std::string& p_model_file);
+
+  void set_param_set_file(const std::string& p_param_set_file);
 
   void set_time_limit(double p_time_limit);
 

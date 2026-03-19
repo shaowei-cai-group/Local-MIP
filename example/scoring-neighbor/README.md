@@ -140,9 +140,10 @@ The callback receives `Scoring::Neighbor_Ctx` with access to:
 
 ```bash
 cd example/scoring-neighbor
-g++ -O3 -std=c++20 neighbor_random.cpp -I../../src -L../../build -lLocalMIP -lpthread -o neighbor_random_demo
+g++ -O3 -std=c++20 neighbor_random.cpp -I.. -I../../src -L../../build -lLocalMIP -lpthread -o neighbor_random_demo
 ./neighbor_random_demo
 ```
+The demo resolves the bundled sample instance from either `example/` or `example/scoring-neighbor/`. Pass a custom instance path as `argv[1]` to override it.
 
 ## Expected Output
 

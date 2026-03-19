@@ -46,6 +46,12 @@ public:
     size_t& m_op_size;
 
     std::mt19937& m_rng;
+
+    void clear_ops();
+
+    void set_single_op(size_t p_var_idx, double p_delta);
+
+    void append_op(size_t p_var_idx, double p_delta);
   };
 
   using Neighbor_Cbk = std::function<void(Neighbor_Ctx&, void*)>;

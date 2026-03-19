@@ -100,9 +100,10 @@ The callback receives `Restart::Restart_Ctx` with access to:
 
 ```bash
 cd example/restart-callback
-g++ -O3 -std=c++20 restart_callback.cpp -I../../src -L../../build -lLocalMIP -lpthread -o restart_callback_demo
+g++ -O3 -std=c++20 restart_callback.cpp -I.. -I../../src -L../../build -lLocalMIP -lpthread -o restart_callback_demo
 ./restart_callback_demo
 ```
+The demo resolves the bundled sample instance from either `example/` or `example/restart-callback/`. Pass a custom instance path as `argv[1]` to override it.
 
 ## Expected Output
 

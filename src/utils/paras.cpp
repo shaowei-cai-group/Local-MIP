@@ -22,7 +22,9 @@
 #include <fstream>
 #include <istream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 Paras g_paras;
 
@@ -64,27 +66,67 @@ bool only_missing_required_errors(const std::string& errors)
   return has_line;
 }
 
+[[noreturn]] void report_parameter_error(const std::string& message,
+                                         bool p_exit_on_error)
+{
+  if (p_exit_on_error)
+  {
+    std::fprintf(stderr, "c [error] %s\n", message.c_str());
+    std::exit(EXIT_FAILURE);
+  }
+  throw std::runtime_error(message);
+}
+
 } // namespace
 
 void Paras::parse_args(int argc, char* argv[])
 {
   cmdline::parser parser;
-  parser.add("help", '?', "print this message");
+  parser.add("help", 'h', "print this message");
 
 #define STR_PARA(N, S, M, D, C) parser.add<std::string>(#N, S, C, M, D);
   STR_PARAS
 #undef STR_PARA
 
 #define PARA(N, T, S, M, D, L, H, C)                                      \
-  if (!strcmp(#T, "int"))                                                 \
-    parser.add<int>(#N, S, C, M, D, cmdline::range((int)L, (int)H));      \
-  else                                                                    \
-    parser.add<double>(                                                   \
-        #N, S, C, M, D, cmdline::range((double)L, (double)H));
+  parser.add<T>(#N,                                                       \
+                S,                                                        \
+                C,                                                        \
+                M,                                                        \
+                static_cast<T>(D),                                        \
+                cmdline::range<T>(static_cast<T>(L), static_cast<T>(H)));
   PARAS
 #undef PARA
 
-  bool parsed_ok = parser.parse(argc, argv);
+  std::vector<std::string> normalized_args;
+  normalized_args.reserve(static_cast<size_t>(argc));
+  for (int arg_idx = 0; arg_idx < argc; ++arg_idx)
+    normalized_args.emplace_back(argv[arg_idx]);
+
+  for (int arg_idx = 1; arg_idx < argc; ++arg_idx)
+  {
+    if (normalized_args[arg_idx] == "-?")
+    {
+      normalized_args[arg_idx] = "--help";
+      continue;
+    }
+
+    if (normalized_args[arg_idx] != "-h")
+      continue;
+
+    const bool has_value =
+        arg_idx + 1 < argc && !normalized_args[arg_idx + 1].empty() &&
+        normalized_args[arg_idx + 1][0] != '-';
+    if (has_value)
+      normalized_args[arg_idx] = "-H";
+  }
+
+  std::vector<char*> normalized_argv;
+  normalized_argv.reserve(normalized_args.size());
+  for (std::string& arg : normalized_args)
+    normalized_argv.push_back(arg.data());
+
+  bool parsed_ok = parser.parse(argc, normalized_argv.data());
   if (!parsed_ok)
   {
     std::string errors = parser.error_full();
@@ -117,12 +159,7 @@ void Paras::parse_args(int argc, char* argv[])
 
 #define PARA(N, T, S, M, D, L, H, C)                                      \
   if (parser.exist(#N))                                                   \
-  {                                                                       \
-    if (!strcmp(#T, "int"))                                               \
-      this->N = parser.get<int>(#N);                                      \
-    else                                                                  \
-      this->N = parser.get<double>(#N);                                   \
-  }
+    this->N = parser.get<T>(#N);
   PARAS
 #undef PARA
 
@@ -136,15 +173,16 @@ void Paras::parse_args(int argc, char* argv[])
   k_zero_tolerance = zero_tolerance;
 }
 
-void Paras::load_from_file(const std::string& file_path)
+void Paras::load_from_file(const std::string& file_path, bool p_exit_on_error)
 {
+  m_loaded_param_names.clear();
+
   std::ifstream input(file_path);
   if (!input.is_open())
   {
-    fprintf(stderr,
-            "c [error] cannot open parameter set file '%s'\n",
-            file_path.c_str());
-    exit(EXIT_FAILURE);
+    report_parameter_error("cannot open parameter set file '" + file_path +
+                               "'",
+                           p_exit_on_error);
   }
   printf("c parameter set file is set to : %s\n", file_path.c_str());
 
@@ -186,38 +224,40 @@ void Paras::load_from_file(const std::string& file_path)
 
     if (name.empty() || value.empty())
     {
-      fprintf(stderr,
-              "c [error] invalid parameter format in %s:%zu\n",
-              file_path.c_str(),
-              line_no);
-      exit(EXIT_FAILURE);
+      std::ostringstream oss;
+      oss << "invalid parameter format in " << file_path << ":" << line_no;
+      report_parameter_error(oss.str(), p_exit_on_error);
     }
 
-    if (!set_param_from_string(name, value, line_no, file_path))
+    if (!set_param_from_string(
+            name, value, line_no, file_path, p_exit_on_error))
     {
-      fprintf(stderr,
-              "c [error] unknown parameter '%s' in %s:%zu\n",
-              name.c_str(),
-              file_path.c_str(),
-              line_no);
-      exit(EXIT_FAILURE);
+      std::ostringstream oss;
+      oss << "unknown parameter '" << name << "' in " << file_path << ":"
+          << line_no;
+      report_parameter_error(oss.str(), p_exit_on_error);
     }
+    m_loaded_param_names.insert(name);
   }
+}
+
+bool Paras::has_loaded_param(const std::string& name) const
+{
+  return m_loaded_param_names.find(name) != m_loaded_param_names.end();
 }
 
 bool Paras::set_param_from_string(const std::string& name,
                                   const std::string& value,
                                   size_t line_no,
-                                  const std::string& file_path)
+                                  const std::string& file_path,
+                                  bool p_exit_on_error)
 {
   auto report_error = [&](const std::string& message)
   {
-    fprintf(stderr,
-            "c [error] %s (file: %s, line: %zu)\n",
-            message.c_str(),
-            file_path.c_str(),
-            line_no);
-    exit(EXIT_FAILURE);
+    std::ostringstream oss;
+    oss << message << " (file: " << file_path << ", line: " << line_no
+        << ")";
+    report_parameter_error(oss.str(), p_exit_on_error);
   };
 
 #define PARA(N, T, S, M, D, L, H, C)                                      \

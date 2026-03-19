@@ -95,9 +95,10 @@ The callback receives `Weight::Weight_Ctx` with access to:
 
 ```bash
 cd example/weight-callback
-g++ -O3 -std=c++20 weight_callback.cpp -I../../src -L../../build -lLocalMIP -lpthread -o weight_callback_demo
+g++ -O3 -std=c++20 weight_callback.cpp -I.. -I../../src -L../../build -lLocalMIP -lpthread -o weight_callback_demo
 ./weight_callback_demo
 ```
+The demo resolves the bundled sample instance from either `example/` or `example/weight-callback/`. Pass a custom instance path as `argv[1]` to override it.
 
 ## Expected Output
 

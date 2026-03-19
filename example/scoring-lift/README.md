@@ -135,9 +135,10 @@ The callback receives `Scoring::Lift_Ctx` with access to:
 
 ```bash
 cd example/scoring-lift
-g++ -O3 -std=c++20 lift_degree.cpp -I../../src -L../../build -lLocalMIP -lpthread -o lift_degree_demo
+g++ -O3 -std=c++20 lift_degree.cpp -I.. -I../../src -L../../build -lLocalMIP -lpthread -o lift_degree_demo
 ./lift_degree_demo
 ```
+The demo resolves the bundled sample instance from either `example/` or `example/scoring-lift/`. Pass a custom instance path as `argv[1]` to override it.
 
 ## Expected Output
 

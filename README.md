@@ -99,6 +99,8 @@ ctest --output-on-failure
 
 ## Path 2: Use as a Library
 
+The public C++ and Python interfaces expose the core solver configuration used in normal runs, including parameter-file loading, along with result queries, in-memory modeling, and callback registration.
+
 ### C++ static library
 - The core build produces `build/libLocalMIP.a`; headers live under `src/`.
 - Link against the static library directly or follow the example projects under `example/`.
@@ -122,12 +124,11 @@ cd example/model-api
 
 # Run the Python Model API demo
 cd ../../
-export PYTHONPATH=$PWD/python-bindings/build:$PYTHONPATH
 python3 python-bindings/model_api_demo.py
 ```
 
 ### Callbacks (customize the solver)
-Local-MIP exposes multiple callback hooks (start, restart, weight, neighbor generation, neighbor scoring, lift scoring). Predefined demos live under `example/` (e.g., `start-callback/`, `restart-callback/`, `weight-callback/`, `neighbor-config/`, `neighbor-userdata/`, `scoring-neighbor/`, `scoring-lift/`). Refer to the example READMEs and callback type declarations in `src/local_search/` for signatures and available context fields.
+Local-MIP exposes multiple callback hooks (start, restart, weight, neighbor generation, neighbor scoring, lift scoring). Predefined demos live under `example/` (e.g., `start-callback/`, `restart-callback/`, `weight-callback/`, `neighbor-config/`, `neighbor-userdata/`, `scoring-neighbor/`, `scoring-lift/`). The C++ API exposes typed callback signatures with optional `void* user_data`; the Python bindings now expose structured callback context objects plus optional `user_data` objects so the same customization pattern is available from Python. Refer to the example READMEs and callback type declarations in `src/local_search/` for details.
 
 ### Example projects (C++ API)
 Examples are decoupled from the main tree. Prepare once, then build (or run `./build.sh all` to do this automatically):
@@ -143,24 +144,27 @@ Notable demo directories:
 - `scoring-lift/`, `scoring-neighbor/` – custom scoring in feasible/infeasible phases
 - `neighbor-config/`, `neighbor-userdata/` – neighbor configuration and custom operators
 
-Each demo binary is emitted inside its directory; run it from that directory so relative paths resolve to `../test-set`, e.g.:
+Each demo binary is emitted inside its directory. The canonical flow is to run it from `example/` after `./build.sh`:
 ```bash
-cd example/simple-api
-./simple_api_demo
+cd example
+./simple-api/simple_api_demo
 ```
+File-backed demos now also resolve the bundled sample instance when launched from their own subdirectory, so `cd example/simple-api && ./simple_api_demo` works too. Pass a custom instance path as `argv[1]` when needed.
 
 ### Python bindings (pybind11)
 Located in `python-bindings/` (separate from the core). Quick start:
 ```bash
-# install pybind11 by apt install python3-pybind11 -y
+# install pybind11 via your package manager or: pip install pybind11
 python-bindings/build.sh   # builds core if needed and compiles the pybind11 module
-export PYTHONPATH=$PWD/python-bindings/build:$PYTHONPATH
 python3 python-bindings/sample.py
 
 # Model API demo (build models programmatically)
 python3 python-bindings/model_api_demo.py
+
+# Smoke test for parameter files + callback contexts
+python3 python-bindings/test_python_api.py
 ```
-The module (`localmip_py*.so`) links against the core static library. The sample loads `test-set/2club200v15p5scn.mps`, runs the solver, and writes `py_example.sol`. Callback contexts are passed as opaque capsules; extend `python-bindings/local_mip_py.cpp` if you need field-level access.
+The module (`localmip_py*.so`) links against the core static library. The sample loads `test-set/2club200v15p5scn.mps`, runs the solver, and writes `py_example.sol`. Python callbacks receive structured context objects, expose writable solver state where appropriate, and optionally accept a Python `user_data` object. If your `python3` is not the same interpreter used during build, rebuild with `PYTHON_EXECUTABLE=/path/to/python3 python-bindings/build.sh` and use that same interpreter to run the scripts.
 
 ---
 

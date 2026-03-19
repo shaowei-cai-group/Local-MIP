@@ -34,9 +34,11 @@ Build/run this example only (requires main project built to provide `build/libLo
 
 ```bash
 cd example/neighbor-config
-g++ -O3 -std=c++20 neighbor_config.cpp -I../../src -L../../build -lLocalMIP -lpthread -o neighbor_config_demo
+g++ -O3 -std=c++20 neighbor_config.cpp -I.. -I../../src -L../../build -lLocalMIP -lpthread -o neighbor_config_demo
+./neighbor_config_demo
 ./neighbor_config_demo ../test-set/2club200v15p5scn.mps   # or another .mps file
 ```
+Without `argv[1]`, the demo resolves the bundled sample instance from either `example/` or `example/neighbor-config/`.
 
 ## Sample Output (excerpt)
 
@@ -51,6 +53,6 @@ c List: [my_random_flip, unsat_mtm_bm, flip, my_gradient_descent]
 
 ## Notes
 
-- Custom neighbors must set `m_op_size` and fill `m_op_var_idxs[]` / `m_op_var_deltas[]`; for no-op set `m_op_size = 0`.
+- Custom neighbors should use `ctx.set_single_op(...)`, `ctx.append_op(...)`, and `ctx.clear_ops()` to produce move outputs safely.
 - `add_neighbor` parameters `bms_con` and `bms_op` control BMS candidate and operation counts.
 - Call `reset_default_neighbor_list()` to restore the default configuration.

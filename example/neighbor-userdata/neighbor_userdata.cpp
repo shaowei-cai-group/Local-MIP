@@ -15,9 +15,17 @@
 
 =====================================================================================*/
 
+#include "example_paths.h"
 #include "local_mip/Local_MIP.h"
 #include <cstdio>
 #include <random>
+
+namespace
+{
+
+constexpr const char kDefaultModelFile[] = "test-set/2club200v15p5scn.mps";
+
+} // namespace
 
 // User-defined data structure: statistics
 struct NeighborStats
@@ -80,9 +88,7 @@ void smart_flip_neighbor(Neighbor::Neighbor_Ctx& ctx, void* p_user_data)
   double delta = (current_value < 0.5) ? 1.0 : -1.0;
 
   // Set operation
-  ctx.m_op_size = 1;
-  ctx.m_op_var_idxs[0] = best_var_idx;
-  ctx.m_op_var_deltas[0] = delta;
+  ctx.set_single_op(best_var_idx, delta);
 
   if (stats)
   {
@@ -152,9 +158,7 @@ void greedy_gradient_neighbor(Neighbor::Neighbor_Ctx& ctx, void* p_user_data)
 
   if (best_var_idx != SIZE_MAX)
   {
-    ctx.m_op_size = 1;
-    ctx.m_op_var_idxs[0] = best_var_idx;
-    ctx.m_op_var_deltas[0] = best_delta;
+    ctx.set_single_op(best_var_idx, best_delta);
 
     if (stats)
     {
@@ -164,7 +168,7 @@ void greedy_gradient_neighbor(Neighbor::Neighbor_Ctx& ctx, void* p_user_data)
   }
   else
   {
-    ctx.m_op_size = 0;
+    ctx.clear_ops();
     if (stats)
       stats->failed_ops++;
   }
@@ -172,13 +176,14 @@ void greedy_gradient_neighbor(Neighbor::Neighbor_Ctx& ctx, void* p_user_data)
 
 int main(int argc, char** argv)
 {
-  const char* instance_file = (argc > 1) ? argv[1] : "test-set/2club200v15p5scn.mps";
+  const std::string model_file = example_paths::resolve_demo_model_path_or_exit(
+      argc, argv, kDefaultModelFile);
 
   printf("========== Neighbor User Data Example ==========\n\n");
-  printf("Instance: %s\n\n", instance_file);
+  printf("Instance: %s\n\n", model_file.c_str());
 
   Local_MIP solver;
-  solver.set_model_file(instance_file);
+  solver.set_model_file(model_file);
   solver.set_time_limit(30.0);
   solver.set_sol_path("example_neighbor_userdata.sol");
 

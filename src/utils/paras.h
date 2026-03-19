@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstring>
 #include <string>
+#include <unordered_set>
 
 //        name          , type  , short-name, must-need, default, low, high, comments
 #define PARAS                                                             \
@@ -150,13 +151,13 @@
        100000000,                                                         \
        "Tabu tenure variation (min 1)")                                   \
   PARA(activity_period,                                                   \
-       int,                                                               \
-       'h',                                                               \
-       false,                                                             \
-       100000,                                                            \
-       1,                                                                 \
-       100000000,                                                         \
-       "Constraint activity recompute period")                            \
+        int,                                                               \
+        'H',                                                               \
+        false,                                                             \
+        100000,                                                            \
+        1,                                                                 \
+        100000000,                                                         \
+        "Constraint activity recompute period")                            \
   PARA(break_eq_feas,                                                     \
        int,                                                               \
        'z',                                                               \
@@ -172,8 +173,7 @@
        1,                                                                 \
        0,                                                                 \
        1,                                                                 \
-       "Split equalities into two inequalities")                          \
-  PARA(debug, int, 'd', false, 0, 0, 1, "Debug mode or not")
+       "Split equalities into two inequalities")
 
 
 //            name,   short-name, must-need, default, comments
@@ -216,14 +216,19 @@ struct Paras
 
   void parse_args(int argc, char* argv[]);
   void print_change();
-  void load_from_file(const std::string& file_path);
+  void load_from_file(const std::string& file_path,
+                      bool p_exit_on_error = true);
+  bool has_loaded_param(const std::string& name) const;
 
 private:
   bool set_param_from_string(const std::string& name,
                              const std::string& value,
                              size_t line_no,
-                             const std::string& file_path);
+                             const std::string& file_path,
+                             bool p_exit_on_error);
   void validate_required() const;
+
+  std::unordered_set<std::string> m_loaded_param_names;
 };
 
 #define INIT_ARGS g_paras.parse_args(argc, argv);

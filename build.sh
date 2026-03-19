@@ -1,11 +1,30 @@
 #!/bin/bash
 set -euo pipefail
 
-# DisMIP Build Script
-# Usage: ./build.sh [debug|release|clean]
+# Local-MIP Build Script
+# Usage: ./build.sh [debug|release|clean|all]
 
 BUILD_TYPE=${1:-release}
 BUILD_DIR="build"
+
+get_parallel_jobs() {
+    if command -v nproc >/dev/null 2>&1; then
+        nproc
+        return
+    fi
+    if command -v sysctl >/dev/null 2>&1; then
+        sysctl -n hw.logicalcpu 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1
+        return
+    fi
+    if command -v getconf >/dev/null 2>&1; then
+        getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
+        return
+    fi
+    echo 1
+}
+
+PARALLEL_JOBS=$(get_parallel_jobs)
+echo "Using ${PARALLEL_JOBS} parallel job(s)."
 
 case $BUILD_TYPE in
     debug)
@@ -13,14 +32,14 @@ case $BUILD_TYPE in
         mkdir -p $BUILD_DIR
         cd $BUILD_DIR
         cmake -DCMAKE_BUILD_TYPE=Debug ..
-        make -j$(nproc)
+        make -j"${PARALLEL_JOBS}"
         ;;
     release)
         echo "Building Release version..."
         mkdir -p $BUILD_DIR
         cd $BUILD_DIR
         cmake -DCMAKE_BUILD_TYPE=Release ..
-        make -j$(nproc)
+        make -j"${PARALLEL_JOBS}"
         ;;
     clean)
         echo "Cleaning build files..."
@@ -35,7 +54,7 @@ case $BUILD_TYPE in
         mkdir -p $BUILD_DIR
         cd $BUILD_DIR
         cmake -DCMAKE_BUILD_TYPE=Release ..
-        make -j$(nproc)
+        make -j"${PARALLEL_JOBS}"
         cd ..
         
         # 2. Prepare example dependencies

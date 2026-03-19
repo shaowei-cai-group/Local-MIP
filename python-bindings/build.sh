@@ -9,9 +9,41 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIND_DIR="${REPO_ROOT}/python-bindings"
 BIND_BUILD="${BIND_DIR}/build"
 CORE_BUILD="${REPO_ROOT}/build"
-PY_EXE="${PYTHON_EXECUTABLE:-$(python3 -c 'import sys;print(sys.executable)')}"
+
+detect_python_executable() {
+  if [ -n "${PYTHON_EXECUTABLE:-}" ]; then
+    printf '%s\n' "${PYTHON_EXECUTABLE}"
+    return
+  fi
+
+  if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
+    printf '%s\n' "${VIRTUAL_ENV}/bin/python"
+    return
+  fi
+
+  if [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/python" ]; then
+    printf '%s\n' "${CONDA_PREFIX}/bin/python"
+    return
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    command -v python3
+    return
+  fi
+
+  echo "Error: python3 not found. Set PYTHON_EXECUTABLE explicitly." >&2
+  exit 1
+}
+
+PY_EXE="$(detect_python_executable)"
+
+if [ ! -x "${PY_EXE}" ]; then
+  echo "Error: Python executable is not executable: ${PY_EXE}" >&2
+  exit 1
+fi
 
 echo "==> Using Python: ${PY_EXE}"
+"${PY_EXE}" -c 'import sys; print(f"==> Python version: {sys.version.splitlines()[0]}")'
 
 # 1) Build core static lib if missing
 if [ ! -f "${CORE_BUILD}/libLocalMIP.a" ]; then
@@ -27,7 +59,6 @@ mkdir -p "${BIND_BUILD}"
 echo "==> Configuring bindings..."
 cmake -S "${BIND_DIR}" -B "${BIND_BUILD}" \
   -DPYTHON_EXECUTABLE="${PY_EXE}" \
-  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -Wno-dev
 
 # 3) Build bindings
@@ -39,5 +70,6 @@ ls -1 "${BIND_BUILD}"/localmip_py*.so
 
 echo
 echo "To use:"
-echo "  export PYTHONPATH=${BIND_BUILD}:\${PYTHONPATH}"
-echo "  python3 python-bindings/sample.py"
+echo "  ${PY_EXE} python-bindings/sample.py"
+echo "  ${PY_EXE} python-bindings/model_api_demo.py"
+echo "  ${PY_EXE} python-bindings/test_python_api.py"
