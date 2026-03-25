@@ -17,7 +17,9 @@ import weakref
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
-sys.path.append(os.path.join(THIS_DIR, "build"))
+BUILD_DIR = os.path.join(THIS_DIR, "build")
+if os.path.isdir(BUILD_DIR):
+    sys.path.insert(0, BUILD_DIR)
 
 import localmip_py as lm  # noqa: E402
 

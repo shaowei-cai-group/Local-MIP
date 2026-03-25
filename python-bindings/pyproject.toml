@@ -1,0 +1,42 @@
+[build-system]
+requires = [
+  "cmake>=3.15",
+  "setuptools>=64",
+  "wheel",
+  "pybind11>=2.10",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "localmip"
+dynamic = ["version"]
+description = "Python bindings for the Local-MIP solver"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+  { name = "Local-MIP authors" },
+]
+license = { file = "LICENSE" }
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: C++",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering",
+]
+
+[project.urls]
+Homepage = "https://github.com/shaowei-cai-group/Local-MIP"
+Repository = "https://github.com/shaowei-cai-group/Local-MIP"
+Issues = "https://github.com/shaowei-cai-group/Local-MIP/issues"
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }

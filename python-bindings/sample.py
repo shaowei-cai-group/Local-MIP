@@ -5,10 +5,10 @@ Requires the built module (see build.sh) and a test instance in test-set/.
 import os
 import sys
 
-# Point to the built module if not installed
 this_dir = os.path.dirname(os.path.abspath(__file__))
-bind_build = os.path.join(this_dir, "build")
-sys.path.append(bind_build)
+build_dir = os.path.join(this_dir, "build")
+if os.path.isdir(build_dir):
+    sys.path.insert(0, build_dir)
 
 import localmip_py as lm
 

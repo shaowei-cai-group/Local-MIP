@@ -11,6 +11,7 @@ if(POLICY CMP0148)
 endif()
 
 # Find pybind11 (expects it installed or discoverable via CMAKE_PREFIX_PATH)
+find_package(Threads REQUIRED)
 find_package(pybind11 REQUIRED)
 
 # Disable IPO/LTO to avoid toolchain-induced zero-sized outputs
@@ -18,20 +19,35 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 set(PYBIND11_LTO_CXX_FLAGS "" CACHE STRING "" FORCE)
 set(PYBIND11_LTO_C_FLAGS "" CACHE STRING "" FORCE)
 
-# Local-MIP project root (assumes this CMakeLists lives in python-bindings/ under repo root)
+# Prefer bundled core sources in source distributions; fall back to the repo root in development checkouts.
 set(LOCALMIP_ROOT "${CMAKE_CURRENT_LIST_DIR}/..")
-set(LOCALMIP_BUILD_DIR "${LOCALMIP_ROOT}/build")
-set(LOCALMIP_INCLUDE_DIR "${LOCALMIP_ROOT}/src")
-
-# Static library path (built by ./build.sh release|debug)
-set(LOCALMIP_LIB "${LOCALMIP_BUILD_DIR}/libLocalMIP.a")
-if(NOT EXISTS ${LOCALMIP_LIB})
-  message(FATAL_ERROR "Local-MIP static library not found at ${LOCALMIP_LIB}. Build project root first with ./build.sh release|debug.")
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/localmip_core/src")
+  set(LOCALMIP_ROOT "${CMAKE_CURRENT_LIST_DIR}/localmip_core")
 endif()
+set(LOCALMIP_INCLUDE_DIR "${LOCALMIP_ROOT}/src")
+file(GLOB_RECURSE LOCALMIP_SOURCES CONFIGURE_DEPENDS
+  "${LOCALMIP_ROOT}/src/*.cpp"
+  "${LOCALMIP_ROOT}/src/*.cc"
+)
+list(REMOVE_ITEM LOCALMIP_SOURCES "${LOCALMIP_ROOT}/src/utils/main.cpp")
+
+add_library(LocalMIP STATIC ${LOCALMIP_SOURCES})
+target_include_directories(LocalMIP PUBLIC
+  ${LOCALMIP_INCLUDE_DIR}
+  ${LOCALMIP_ROOT}/src/local_mip
+)
+target_compile_features(LocalMIP PUBLIC cxx_std_20)
+target_compile_definitions(LocalMIP PUBLIC $<$<CONFIG:Debug>:DEBUG>)
+target_compile_options(LocalMIP PUBLIC
+  -fPIC
+  $<$<CONFIG:Debug>:-g>
+  $<$<CONFIG:Release>:-O3>
+)
+target_link_libraries(LocalMIP PUBLIC Threads::Threads)
 
 pybind11_add_module(localmip_py MODULE local_mip_py.cpp)
 target_include_directories(localmip_py PRIVATE ${LOCALMIP_INCLUDE_DIR})
-target_link_libraries(localmip_py PRIVATE ${LOCALMIP_LIB} pthread)
+target_link_libraries(localmip_py PRIVATE LocalMIP)
 target_compile_features(localmip_py PRIVATE cxx_std_20)
 set_target_properties(localmip_py PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
 
@@ -44,3 +60,5 @@ endif()
 set_target_properties(localmip_py PROPERTIES
   OUTPUT_NAME "localmip_py"
 )
+
+install(TARGETS localmip_py LIBRARY DESTINATION .)

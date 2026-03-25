@@ -15,7 +15,9 @@ import os
 import sys
 
 this_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(this_dir, "build"))
+build_dir = os.path.join(this_dir, "build")
+if os.path.isdir(build_dir):
+    sys.path.insert(0, build_dir)
 
 import localmip_py as lm  # noqa: E402
 

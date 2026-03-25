@@ -1,0 +1,6 @@
+include README.md
+include VERSION
+include CMakeLists.txt
+include local_mip_py.cpp
+include smoke_test.py
+include LICENSE
