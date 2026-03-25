@@ -61,10 +61,10 @@ If installed with pip:
 import localmip_py as lm
 ```
 
-If using the local development build, either append the build directory to `PYTHONPATH` or copy the `.so` next to your script:
+If using the local development build, either put the build directory at the front of `PYTHONPATH` or copy the `.so` next to your script:
 ```python
 import sys
-sys.path.append("python-bindings/build")  # if not installed
+sys.path.insert(0, "python-bindings/build")  # prefer the local build
 import localmip_py as lm
 
 solver = lm.LocalMIP()

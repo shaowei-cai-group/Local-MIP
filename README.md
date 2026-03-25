@@ -21,13 +21,27 @@ Although Local-MIP is freely available under the MIT license, we would be please
 - `example/` – standalone API examples; buildable independently after preparing headers/static lib.
 - `test-set/` – sample `.mps/.lp` instances.
 - `build/` – generated build artifacts (created by `./build.sh`).
-- `python-bindings/` – optional pybind11 bindings (built separately).
+- `python-bindings/` – optional pybind11 bindings and Python packaging files.
 - `default.set` – parameter configuration template.
 
 ## Requirements
 - CMake ≥ 3.15
 - A C++20 compiler (GCC/Clang)
 - bash, make, and standard POSIX utilities
+
+## Path 0: Install from PyPI
+
+For Linux x86_64, install the published Python bindings directly:
+```bash
+python3 -m pip install localmip
+```
+
+Import the module in Python:
+```python
+import localmip_py as lm
+```
+
+For repository-based development builds and Python demos, see [python-bindings/README.md](python-bindings/README.md).
 
 ---
 
@@ -152,10 +166,17 @@ cd example
 File-backed demos now also resolve the bundled sample instance when launched from their own subdirectory, so `cd example/simple-api && ./simple_api_demo` works too. Pass a custom instance path as `argv[1]` when needed.
 
 ### Python bindings (pybind11)
-Located in `python-bindings/` (separate from the core). Quick start:
+Located in `python-bindings/` (separate from the core).
+
+Install from PyPI on Linux x86_64:
 ```bash
-# install pybind11 via your package manager or: pip install pybind11
-python-bindings/build.sh   # builds core if needed and compiles the pybind11 module
+python3 -m pip install localmip
+python3 -c "import localmip_py as lm; print(lm.LocalMIP)"
+```
+
+Quick start from the repository:
+```bash
+python3 -m pip install ./python-bindings
 python3 python-bindings/sample.py
 
 # Model API demo (build models programmatically)
@@ -164,7 +185,7 @@ python3 python-bindings/model_api_demo.py
 # Smoke test for parameter files + callback contexts
 python3 python-bindings/test_python_api.py
 ```
-The module (`localmip_py*.so`) links against the core static library. The sample loads `test-set/2club200v15p5scn.mps`, runs the solver, and writes `py_example.sol`. Python callbacks receive structured context objects, expose writable solver state where appropriate, and optionally accept a Python `user_data` object. If your `python3` is not the same interpreter used during build, rebuild with `PYTHON_EXECUTABLE=/path/to/python3 python-bindings/build.sh` and use that same interpreter to run the scripts.
+For iterative local development, `python-bindings/build.sh` still builds the extension into `python-bindings/build/`, and the repository demos prefer that local build when it exists. The sample loads `test-set/2club200v15p5scn.mps`, runs the solver, and writes `py_example.sol`. Python callbacks receive structured context objects, expose writable solver state where appropriate, and optionally accept a Python `user_data` object. If your `python3` is not the same interpreter used during build, rebuild with `PYTHON_EXECUTABLE=/path/to/python3 python-bindings/build.sh` and use that same interpreter to run the scripts.
 
 ---
 

@@ -4,3 +4,4 @@ build/
 .cache/
 AGENTS.md
 .clangd
+python-bindings/localmip.egg-info/
