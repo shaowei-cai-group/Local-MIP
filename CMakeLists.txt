@@ -13,6 +13,9 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 find_package(Threads REQUIRED)
 
+option(LOCALMIP_BUILD_CLI "Build the Local-MIP command line solver" ON)
+option(LOCALMIP_BUILD_TESTS "Build Local-MIP tests" ON)
+
 file(GLOB_RECURSE LIB_SOURCES CONFIGURE_DEPENDS "src/*.cpp" "src/*.cc")
 list(REMOVE_ITEM LIB_SOURCES "${PROJECT_SOURCE_DIR}/src/utils/main.cpp")
 
@@ -36,8 +39,12 @@ target_link_libraries(LocalMIP PUBLIC
   Threads::Threads
 )
 
-add_executable(${PROJECT_NAME} src/utils/main.cpp)
-target_link_libraries(${PROJECT_NAME} PRIVATE LocalMIP::core)
+if(LOCALMIP_BUILD_CLI)
+  add_executable(${PROJECT_NAME} src/utils/main.cpp)
+  target_link_libraries(${PROJECT_NAME} PRIVATE LocalMIP::core)
+endif()
 
-enable_testing()
-add_subdirectory(tests)
+if(LOCALMIP_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
