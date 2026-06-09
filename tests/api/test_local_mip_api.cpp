@@ -577,6 +577,22 @@ bool test_embedded_exchange_hooks()
   return ok;
 }
 
+bool test_model_api_empty_constraints()
+{
+  bool ok = true;
+
+  Local_MIP sat_solver;
+  sat_solver.enable_model_api();
+  sat_solver.set_bound_strengthen(false);
+  sat_solver.add_var("x", 0.0, 1.0, 0.0, Var_Type::binary);
+  sat_solver.add_con(-1.0, 2.0, std::vector<int>{}, std::vector<double>{});
+  sat_solver.m_model_api->build_model(*sat_solver.m_model_manager);
+  ok &= check(sat_solver.m_model_manager->process_after_read(),
+              "satisfied empty constraints should be accepted");
+
+  return ok;
+}
+
 } // namespace
 
 int main()
@@ -590,6 +606,7 @@ int main()
   ok &= test_library_parameter_file_loading();
   ok &= test_library_parameter_file_errors();
   ok &= test_embedded_exchange_hooks();
+  ok &= test_model_api_empty_constraints();
 
   if (!ok)
   {

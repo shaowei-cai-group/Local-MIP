@@ -298,9 +298,6 @@ void Model_API::build_model(Model_Manager& p_model_manager)
   for (size_t i = 0; i < m_cons.size(); ++i)
   {
     const auto& con = m_cons[i];
-    if (con.m_var_indices.empty())
-      throw Solver_Error(
-          "Model_API::build_model: empty constraints are not supported");
     std::string con_name = "__api_c" + std::to_string(i);
     bool lb_is_inf = (con.m_lb <= k_neg_inf);
     bool ub_is_inf = (con.m_ub >= k_inf);
