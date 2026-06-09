@@ -139,6 +139,16 @@ private:
 
   size_t m_min_unsat_con;
 
+  size_t m_exchange_check_interval;
+
+  std::function<void(const double* p_sol, size_t p_var_num, double p_obj)>
+      m_on_improvement_cbk;
+
+  std::function<void()> m_exchange_check_cbk;
+
+  std::function<void(const double* p_sol, size_t p_var_num, size_t p_unsat_num)>
+      m_on_infeas_improvement_cbk;
+
   size_t m_var_num;
 
   size_t m_con_num;
@@ -323,6 +333,28 @@ public:
   void set_tabu_variation(size_t p_value);
 
   void set_break_eq_feas(bool p_break_eq_feas);
+
+  void set_on_improvement_callback(
+      std::function<void(const double*, size_t, double)> p_cbk);
+
+  bool inject_solution(const double* p_sol, size_t p_var_num, double p_obj);
+
+  bool inject_to_current_and_restart(const double* p_sol,
+                                     size_t p_var_num,
+                                     size_t p_restart_step_override);
+
+  void set_exchange_check_interval(size_t p_interval);
+
+  void set_exchange_check_callback(std::function<void()> p_cbk);
+
+  void set_on_infeas_improvement_callback(
+      std::function<void(const double*, size_t, size_t)> p_cbk);
+
+  bool inject_infeas_solution(const double* p_sol,
+                              size_t p_var_num,
+                              size_t p_unsat_num);
+
+  size_t get_min_unsat_con() const;
 };
 
 inline bool Local_Search::con_sat(size_t p_con_idx) const
@@ -391,6 +423,13 @@ inline void Local_Search::update_best_solution()
   m_con_constant[0] = m_best_obj - k_opt_tolerance;
   m_current_obj_breakthrough = false;
   publish_best_obj();
+  if (m_on_improvement_cbk)
+  {
+    double user_obj =
+        m_model_manager->is_min() *
+        (m_best_obj + m_model_manager->obj_offset());
+    m_on_improvement_cbk(m_var_best_value.data(), m_var_num, user_obj);
+  }
 }
 
 inline void Local_Search::publish_best_obj()

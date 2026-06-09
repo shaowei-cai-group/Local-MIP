@@ -39,6 +39,10 @@ int Local_Search::run_search()
   init_state();
   while (!m_terminated)
   {
+    if (m_exchange_check_cbk && m_exchange_check_interval > 0 &&
+        m_cur_step % m_exchange_check_interval == 0)
+      m_exchange_check_cbk();
+
     if (m_restart.execute(m_restart_ctx))
       reset_after_restart();
     if (m_con_unsat_idxs.empty())
@@ -216,7 +220,12 @@ void Local_Search::apply_move(size_t p_var_idx, double p_delta)
   }
   m_current_obj_breakthrough = m_con_activity[0] <= m_con_constant[0];
   if (m_con_unsat_idxs.size() < m_min_unsat_con)
+  {
     m_min_unsat_con = m_con_unsat_idxs.size();
+    if (!m_is_found_feasible && m_on_infeas_improvement_cbk)
+      m_on_infeas_improvement_cbk(
+          m_var_current_value.data(), m_var_num, m_min_unsat_con);
+  }
   assert(model_var.in_bound(m_var_current_value[p_var_idx]));
 }
 
@@ -443,6 +452,8 @@ Local_Search::Local_Search(const Model_Manager* p_model_manager)
       m_bms_random_op(250), m_best_obj(k_inf),
       m_logged_obj_value(std::numeric_limits<double>::quiet_NaN()),
       m_terminated(false), m_sol_path(""), m_min_unsat_con(SIZE_MAX),
+      m_exchange_check_interval(0), m_on_improvement_cbk(nullptr),
+      m_exchange_check_cbk(nullptr), m_on_infeas_improvement_cbk(nullptr),
       m_has_objective(false), m_is_unbounded(false),
       m_readonly_ctx(*m_model_manager,
                      m_var_current_value,
@@ -673,4 +684,81 @@ void Local_Search::set_tabu_variation(size_t p_value)
 void Local_Search::set_break_eq_feas(bool p_enable)
 {
   m_break_eq_feas = p_enable;
+}
+
+void Local_Search::set_on_improvement_callback(
+    std::function<void(const double*, size_t, double)> p_cbk)
+{
+  m_on_improvement_cbk = std::move(p_cbk);
+}
+
+bool Local_Search::inject_solution(const double* p_sol,
+                                   size_t p_var_num,
+                                   double p_obj)
+{
+  if (p_sol == nullptr || p_var_num != m_var_num)
+    return false;
+
+  double internal_obj =
+      p_obj / m_model_manager->is_min() - m_model_manager->obj_offset();
+  if (internal_obj >= m_best_obj)
+    return false;
+
+  memcpy(m_var_best_value.data(), p_sol, m_var_num * sizeof(double));
+  m_best_obj = internal_obj;
+  m_con_constant[0] = m_best_obj - k_opt_tolerance;
+  m_last_improve_step = m_cur_step;
+  m_is_found_feasible = true;
+  publish_best_obj();
+  printf("c [%10.2lf] local search injected external solution obj=%.15g\n",
+         elapsed_time(),
+         p_obj);
+  return true;
+}
+
+bool Local_Search::inject_to_current_and_restart(
+    const double* p_sol, size_t p_var_num, size_t p_restart_step_override)
+{
+  if (p_sol == nullptr || p_var_num != m_var_num)
+    return false;
+
+  memcpy(m_var_current_value.data(), p_sol, m_var_num * sizeof(double));
+  reset_after_restart();
+  m_restart.set_restart_step(p_restart_step_override);
+  printf("c [%10.2lf] local search injected current solution, restart_step=%zu\n",
+         elapsed_time(),
+         p_restart_step_override);
+  return true;
+}
+
+void Local_Search::set_exchange_check_interval(size_t p_interval)
+{
+  m_exchange_check_interval = p_interval;
+}
+
+void Local_Search::set_exchange_check_callback(std::function<void()> p_cbk)
+{
+  m_exchange_check_cbk = std::move(p_cbk);
+}
+
+void Local_Search::set_on_infeas_improvement_callback(
+    std::function<void(const double*, size_t, size_t)> p_cbk)
+{
+  m_on_infeas_improvement_cbk = std::move(p_cbk);
+}
+
+bool Local_Search::inject_infeas_solution(const double*,
+                                          size_t p_var_num,
+                                          size_t p_unsat_num)
+{
+  if (m_is_found_feasible || p_var_num != m_var_num ||
+      p_unsat_num >= m_min_unsat_con)
+    return false;
+  m_min_unsat_con = p_unsat_num;
+  return true;
+}
+
+size_t Local_Search::get_min_unsat_con() const
+{
+  return m_min_unsat_con;
 }

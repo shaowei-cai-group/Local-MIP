@@ -467,6 +467,116 @@ bool test_library_parameter_file_errors()
   return ok;
 }
 
+bool test_embedded_exchange_hooks()
+{
+  Local_MIP solver;
+  bool ok = true;
+
+  solver.enable_model_api();
+  solver.set_log_obj(false);
+  solver.set_time_limit(0.05);
+  solver.set_bound_strengthen(false);
+  int x = solver.add_var("x", 0.0, 1.0, 1.0, Var_Type::binary);
+  solver.add_con(1.0, 1.0, std::vector<int>{x}, std::vector<double>{1.0});
+
+  size_t improvement_calls = 0;
+  size_t improvement_n = 0;
+  double improvement_obj = 0.0;
+  solver.set_on_improvement_callback(
+      [&](const double*, size_t n, double obj)
+      {
+        ++improvement_calls;
+        improvement_n = n;
+        improvement_obj = obj;
+      });
+  solver.run();
+  ok &= check(improvement_calls > 0,
+              "improvement callback should run during solve");
+  ok &= check(improvement_n == 1,
+              "improvement callback should report variable count");
+  ok &= check(std::fabs(improvement_obj - solver.get_obj_value()) < 1e-9,
+              "improvement callback should report user objective");
+
+  Local_MIP inject_solver;
+  inject_solver.enable_model_api();
+  int y = inject_solver.add_var("y", 0.0, 10.0, 1.0, Var_Type::real);
+  (void)y;
+  inject_solver.add_con(0.0, 10.0, std::vector<int>{0}, std::vector<double>{1.0});
+  inject_solver.m_model_api->build_model(*inject_solver.m_model_manager);
+  inject_solver.m_model_manager->process_after_read();
+  inject_solver.m_local_search->init_data();
+  inject_solver.m_local_search->m_var_best_value.assign(1, 5.0);
+  inject_solver.m_local_search->m_var_current_value.assign(1, 5.0);
+  inject_solver.m_local_search->m_var_num = 1;
+  inject_solver.m_local_search->m_best_obj = 5.0;
+
+  double better_sol[1] = {2.0};
+  ok &= check(inject_solver.inject_solution(better_sol, 1, 2.0),
+              "inject_solution should accept better external objective");
+  ok &= check(inject_solver.is_feasible(),
+              "inject_solution should mark solver feasible");
+  ok &= check(std::fabs(inject_solver.get_solution()[0] - 2.0) < 1e-9,
+              "inject_solution should copy best solution");
+  ok &= check(!inject_solver.inject_solution(better_sol, 2, 1.0),
+              "inject_solution should reject mismatched variable count");
+  ok &= check(!inject_solver.inject_solution(better_sol, 1, 9.0),
+              "inject_solution should reject worse objective");
+
+  double current_sol[1] = {3.0};
+  ok &= check(inject_solver.inject_to_current_and_restart(current_sol, 1, 77),
+              "inject_to_current_and_restart should accept matching vector");
+  ok &= check(
+      std::fabs(inject_solver.m_local_search->m_var_current_value[0] - 3.0) <
+          1e-9,
+      "inject_to_current_and_restart should copy current solution");
+  ok &= check(inject_solver.m_local_search->m_restart.m_restart_step == 77,
+              "inject_to_current_and_restart should override restart step");
+
+  bool exchange_called = false;
+  inject_solver.set_exchange_check_interval(1);
+  inject_solver.set_exchange_check_callback([&]() { exchange_called = true; });
+  inject_solver.m_local_search->m_exchange_check_cbk();
+  ok &= check(exchange_called,
+              "exchange callback should be stored and callable");
+
+  Local_MIP infeas_solver;
+  infeas_solver.enable_model_api();
+  int z = infeas_solver.add_var("z", 0.0, 1.0, 0.0, Var_Type::binary);
+  (void)z;
+  infeas_solver.add_con(1.0, 1.0, std::vector<int>{0}, std::vector<double>{1.0});
+  infeas_solver.m_model_api->build_model(*infeas_solver.m_model_manager);
+  infeas_solver.m_model_manager->process_after_read();
+  infeas_solver.m_local_search->init_data();
+  infeas_solver.m_local_search->m_var_num = 1;
+  infeas_solver.m_local_search->m_min_unsat_con = 5;
+
+  size_t infeas_calls = 0;
+  size_t infeas_n = 0;
+  size_t infeas_unsat = 0;
+  infeas_solver.set_on_infeas_improvement_callback(
+      [&](const double*, size_t n, size_t unsat)
+      {
+        ++infeas_calls;
+        infeas_n = n;
+        infeas_unsat = unsat;
+      });
+  infeas_solver.m_local_search->m_on_infeas_improvement_cbk(
+      nullptr, 1, 4);
+  ok &= check(infeas_calls == 1 && infeas_n == 1 && infeas_unsat == 4,
+              "infeas improvement callback should be stored and callable");
+
+  ok &= check(infeas_solver.inject_infeas_solution(nullptr, 1, 3),
+              "inject_infeas_solution should accept lower unsat count");
+  ok &= check(infeas_solver.m_local_search->get_min_unsat_con() == 3,
+              "inject_infeas_solution should update min unsat count");
+  ok &= check(!infeas_solver.inject_infeas_solution(nullptr, 1, 3),
+              "inject_infeas_solution should reject non-improving count");
+  ok &= check(!infeas_solver.inject_infeas_solution(nullptr, 2, 2),
+              "inject_infeas_solution should reject mismatched variable count");
+
+  return ok;
+}
+
 } // namespace
 
 int main()
@@ -479,6 +589,7 @@ int main()
   ok &= test_parameter_file_loading();
   ok &= test_library_parameter_file_loading();
   ok &= test_library_parameter_file_errors();
+  ok &= test_embedded_exchange_hooks();
 
   if (!ok)
   {

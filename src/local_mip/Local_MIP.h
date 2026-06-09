@@ -21,6 +21,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -59,6 +60,8 @@ private:
   std::unique_ptr<Model_API> m_model_api;
 
   bool m_use_model_api;
+
+  bool m_model_loaded;
 
   void request_timeout_stop();
 
@@ -200,6 +203,8 @@ public:
 
   bool set_integrality(const std::string& p_name, Var_Type p_type);
 
+  void load_model();
+
   void run();
 
   double get_obj_value() const;
@@ -209,4 +214,24 @@ public:
   const std::vector<double>& get_solution() const;
 
   const Model_Manager* get_model_manager() const;
+
+  void set_on_improvement_callback(
+      std::function<void(const double*, size_t, double)> p_cbk);
+
+  bool inject_solution(const double* p_sol, size_t p_var_num, double p_obj);
+
+  bool inject_to_current_and_restart(const double* p_sol,
+                                     size_t p_var_num,
+                                     size_t p_restart_step_override);
+
+  void set_exchange_check_interval(size_t p_interval);
+
+  void set_exchange_check_callback(std::function<void()> p_cbk);
+
+  void set_on_infeas_improvement_callback(
+      std::function<void(const double*, size_t, size_t)> p_cbk);
+
+  bool inject_infeas_solution(const double* p_sol,
+                              size_t p_var_num,
+                              size_t p_unsat_num);
 };

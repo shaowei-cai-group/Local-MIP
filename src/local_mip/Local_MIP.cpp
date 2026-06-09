@@ -48,7 +48,7 @@ Local_MIP::Local_MIP()
       m_model_manager(std::make_unique<Model_Manager>()),
       m_local_search(
           std::make_unique<Local_Search>(m_model_manager.get())),
-      m_model_api(nullptr), m_use_model_api(false)
+      m_model_api(nullptr), m_use_model_api(false), m_model_loaded(false)
 {
 }
 
@@ -377,16 +377,22 @@ void Local_MIP::set_break_eq_feas(bool p_enable)
          p_enable ? "true" : "false");
 }
 
+void Local_MIP::load_model()
+{
+  if (m_model_loaded)
+    return;
+  prepare_reader();
+  m_reader->read(m_model_file.c_str());
+  m_model_loaded = true;
+}
+
 void Local_MIP::run()
 {
   printf("c welcome to Local-MIP solver\n");
   if (m_use_model_api)
     m_model_api->build_model(*m_model_manager);
-  else
-  {
-    prepare_reader();
-    m_reader->read(m_model_file.c_str());
-  }
+  else if (!m_model_loaded)
+    load_model();
 
   if (!m_model_manager->process_after_read())
   {
@@ -522,6 +528,50 @@ const std::vector<double>& Local_MIP::get_solution() const
 const Model_Manager* Local_MIP::get_model_manager() const
 {
   return m_model_manager.get();
+}
+
+void Local_MIP::set_on_improvement_callback(
+    std::function<void(const double*, size_t, double)> p_cbk)
+{
+  m_local_search->set_on_improvement_callback(std::move(p_cbk));
+}
+
+bool Local_MIP::inject_solution(const double* p_sol,
+                                size_t p_var_num,
+                                double p_obj)
+{
+  return m_local_search->inject_solution(p_sol, p_var_num, p_obj);
+}
+
+bool Local_MIP::inject_to_current_and_restart(
+    const double* p_sol, size_t p_var_num, size_t p_restart_step_override)
+{
+  return m_local_search->inject_to_current_and_restart(
+      p_sol, p_var_num, p_restart_step_override);
+}
+
+void Local_MIP::set_exchange_check_interval(size_t p_interval)
+{
+  m_local_search->set_exchange_check_interval(p_interval);
+}
+
+void Local_MIP::set_exchange_check_callback(std::function<void()> p_cbk)
+{
+  m_local_search->set_exchange_check_callback(std::move(p_cbk));
+}
+
+void Local_MIP::set_on_infeas_improvement_callback(
+    std::function<void(const double*, size_t, size_t)> p_cbk)
+{
+  m_local_search->set_on_infeas_improvement_callback(std::move(p_cbk));
+}
+
+bool Local_MIP::inject_infeas_solution(const double* p_sol,
+                                       size_t p_var_num,
+                                       size_t p_unsat_num)
+{
+  return m_local_search->inject_infeas_solution(
+      p_sol, p_var_num, p_unsat_num);
 }
 
 bool Local_MIP::check_model_api() const
