@@ -108,11 +108,21 @@ bool Model_Manager::process_after_read()
   for (size_t con_idx = 1; con_idx < m_con_num; ++con_idx)
   {
     auto& con = m_con_list[con_idx];
-    if (!con.is_inferred_sat() && con.term_num() == 0 &&
-        con.verify_empty_sat())
+    if (!con.is_inferred_sat() && con.term_num() == 0)
     {
-      con.mark_inferred_sat();
-      m_delete_con_num++;
+      if (con.verify_empty_sat())
+      {
+        con.mark_inferred_sat();
+        m_delete_con_num++;
+      }
+      else
+      {
+        printf("c model is infeasible due to empty constraint: %s, "
+               "rhs: %lf\n",
+               con.name().c_str(),
+               con.rhs());
+        return false;
+      }
     }
     classify_con(con);
     if (con.is_inferred_sat())

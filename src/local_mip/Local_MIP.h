@@ -215,22 +215,51 @@ public:
 
   const Model_Manager* get_model_manager() const;
 
-  void set_on_improvement_callback(
-      std::function<void(const double*, size_t, double)> p_cbk);
+  using Improvement_Cbk =
+      std::function<void(const double* p_sol, size_t p_var_num, double p_obj)>;
 
+  using Exchange_Check_Cbk = std::function<void()>;
+
+  using Infeas_Improvement_Cbk = std::function<void(
+      const double* p_sol, size_t p_var_num, size_t p_unsat_num)>;
+
+  // Called from the search thread when a new feasible incumbent is accepted.
+  // p_sol is valid only for the duration of the callback; copy it if it must
+  // outlive the call. p_obj is reported in user objective sense.
+  void set_on_improvement_callback(Improvement_Cbk p_cbk);
+
+  // Inject an externally found feasible incumbent. The solution must match the
+  // model variable order and satisfy bounds, integrality, and constraints.
+  // Returns false for invalid, infeasible, or non-improving incumbents.
   bool inject_solution(const double* p_sol, size_t p_var_num, double p_obj);
 
+  // Replace the current search point and reset local-search state. This API is
+  // intended to be called from the search thread, typically inside the exchange
+  // callback. The injected point may be infeasible but must satisfy variable
+  // bounds and integrality.
   bool inject_to_current_and_restart(const double* p_sol,
                                      size_t p_var_num,
                                      size_t p_restart_step_override);
 
+  // Set how often the search loop invokes the exchange callback. A zero
+  // interval disables periodic checks.
   void set_exchange_check_interval(size_t p_interval);
 
-  void set_exchange_check_callback(std::function<void()> p_cbk);
+  // Called from the search thread every p_interval search steps. The callback
+  // may call injection APIs directly; it must not mutate Local_MIP from a
+  // separate thread unless external synchronization is provided.
+  void set_exchange_check_callback(Exchange_Check_Cbk p_cbk);
 
-  void set_on_infeas_improvement_callback(
-      std::function<void(const double*, size_t, size_t)> p_cbk);
+  // Called before the first feasible solution whenever the current solution
+  // improves the best known number of unsatisfied constraints.
+  void set_on_infeas_improvement_callback(Infeas_Improvement_Cbk p_cbk);
 
+  // Update the best known infeasible progress without changing the current
+  // search point.
+  bool inject_infeas_bound(size_t p_var_num, size_t p_unsat_num);
+
+  // Optionally inject an infeasible current point together with a better unsat
+  // count. If p_sol is nullptr, this is equivalent to inject_infeas_bound().
   bool inject_infeas_solution(const double* p_sol,
                               size_t p_var_num,
                               size_t p_unsat_num);

@@ -531,7 +531,7 @@ const Model_Manager* Local_MIP::get_model_manager() const
 }
 
 void Local_MIP::set_on_improvement_callback(
-    std::function<void(const double*, size_t, double)> p_cbk)
+    Improvement_Cbk p_cbk)
 {
   m_local_search->set_on_improvement_callback(std::move(p_cbk));
 }
@@ -555,15 +555,21 @@ void Local_MIP::set_exchange_check_interval(size_t p_interval)
   m_local_search->set_exchange_check_interval(p_interval);
 }
 
-void Local_MIP::set_exchange_check_callback(std::function<void()> p_cbk)
+void Local_MIP::set_exchange_check_callback(Exchange_Check_Cbk p_cbk)
 {
   m_local_search->set_exchange_check_callback(std::move(p_cbk));
 }
 
 void Local_MIP::set_on_infeas_improvement_callback(
-    std::function<void(const double*, size_t, size_t)> p_cbk)
+    Infeas_Improvement_Cbk p_cbk)
 {
   m_local_search->set_on_infeas_improvement_callback(std::move(p_cbk));
+}
+
+bool Local_MIP::inject_infeas_bound(size_t p_var_num,
+                                    size_t p_unsat_num)
+{
+  return m_local_search->inject_infeas_bound(p_var_num, p_unsat_num);
 }
 
 bool Local_MIP::inject_infeas_solution(const double* p_sol,

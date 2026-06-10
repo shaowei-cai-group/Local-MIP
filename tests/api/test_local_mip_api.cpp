@@ -482,6 +482,7 @@ bool test_embedded_exchange_hooks()
   size_t improvement_calls = 0;
   size_t improvement_n = 0;
   double improvement_obj = 0.0;
+  size_t exchange_calls = 0;
   solver.set_on_improvement_callback(
       [&](const double*, size_t n, double obj)
       {
@@ -489,9 +490,13 @@ bool test_embedded_exchange_hooks()
         improvement_n = n;
         improvement_obj = obj;
       });
+  solver.set_exchange_check_interval(1);
+  solver.set_exchange_check_callback([&]() { ++exchange_calls; });
   solver.run();
   ok &= check(improvement_calls > 0,
               "improvement callback should run during solve");
+  ok &= check(exchange_calls > 0,
+              "exchange callback should run from the search loop");
   ok &= check(improvement_n == 1,
               "improvement callback should report variable count");
   ok &= check(std::fabs(improvement_obj - solver.get_obj_value()) < 1e-9,
@@ -501,7 +506,7 @@ bool test_embedded_exchange_hooks()
   inject_solver.enable_model_api();
   int y = inject_solver.add_var("y", 0.0, 10.0, 1.0, Var_Type::real);
   (void)y;
-  inject_solver.add_con(0.0, 10.0, std::vector<int>{0}, std::vector<double>{1.0});
+  inject_solver.add_con(0.0, 4.0, std::vector<int>{0}, std::vector<double>{1.0});
   inject_solver.m_model_api->build_model(*inject_solver.m_model_manager);
   inject_solver.m_model_manager->process_after_read();
   inject_solver.m_local_search->init_data();
@@ -519,6 +524,9 @@ bool test_embedded_exchange_hooks()
               "inject_solution should copy best solution");
   ok &= check(!inject_solver.inject_solution(better_sol, 2, 1.0),
               "inject_solution should reject mismatched variable count");
+  double infeasible_sol[1] = {7.0};
+  ok &= check(!inject_solver.inject_solution(infeasible_sol, 1, 1.0),
+              "inject_solution should reject constraint-infeasible solutions");
   ok &= check(!inject_solver.inject_solution(better_sol, 1, 9.0),
               "inject_solution should reject worse objective");
 
@@ -531,16 +539,14 @@ bool test_embedded_exchange_hooks()
       "inject_to_current_and_restart should copy current solution");
   ok &= check(inject_solver.m_local_search->m_restart.m_restart_step == 77,
               "inject_to_current_and_restart should override restart step");
-
-  bool exchange_called = false;
-  inject_solver.set_exchange_check_interval(1);
-  inject_solver.set_exchange_check_callback([&]() { exchange_called = true; });
-  inject_solver.m_local_search->m_exchange_check_cbk();
-  ok &= check(exchange_called,
-              "exchange callback should be stored and callable");
+  double out_of_bounds_sol[1] = {11.0};
+  ok &= check(!inject_solver.inject_to_current_and_restart(
+                  out_of_bounds_sol, 1, 77),
+              "inject_to_current_and_restart should reject invalid values");
 
   Local_MIP infeas_solver;
   infeas_solver.enable_model_api();
+  infeas_solver.set_bound_strengthen(false);
   int z = infeas_solver.add_var("z", 0.0, 1.0, 0.0, Var_Type::binary);
   (void)z;
   infeas_solver.add_con(1.0, 1.0, std::vector<int>{0}, std::vector<double>{1.0});
@@ -565,14 +571,25 @@ bool test_embedded_exchange_hooks()
   ok &= check(infeas_calls == 1 && infeas_n == 1 && infeas_unsat == 4,
               "infeas improvement callback should be stored and callable");
 
-  ok &= check(infeas_solver.inject_infeas_solution(nullptr, 1, 3),
+  double infeas_current[1] = {0.0};
+  ok &= check(infeas_solver.inject_infeas_solution(infeas_current, 1, 3),
               "inject_infeas_solution should accept lower unsat count");
   ok &= check(infeas_solver.m_local_search->get_min_unsat_con() == 3,
               "inject_infeas_solution should update min unsat count");
-  ok &= check(!infeas_solver.inject_infeas_solution(nullptr, 1, 3),
+  ok &= check(
+      std::fabs(infeas_solver.m_local_search->m_var_current_value[0] - 0.0) <
+          1e-9,
+      "inject_infeas_solution should copy current solution when provided");
+  ok &= check(infeas_solver.inject_infeas_bound(1, 2),
+              "inject_infeas_bound should accept lower unsat count");
+  ok &= check(infeas_solver.m_local_search->get_min_unsat_con() == 2,
+              "inject_infeas_bound should update min unsat count");
+  ok &= check(!infeas_solver.inject_infeas_solution(nullptr, 1, 2),
               "inject_infeas_solution should reject non-improving count");
-  ok &= check(!infeas_solver.inject_infeas_solution(nullptr, 2, 2),
+  ok &= check(!infeas_solver.inject_infeas_solution(nullptr, 2, 1),
               "inject_infeas_solution should reject mismatched variable count");
+  ok &= check(!infeas_solver.inject_infeas_solution(out_of_bounds_sol, 1, 1),
+              "inject_infeas_solution should reject invalid values");
 
   return ok;
 }
@@ -589,6 +606,15 @@ bool test_model_api_empty_constraints()
   sat_solver.m_model_api->build_model(*sat_solver.m_model_manager);
   ok &= check(sat_solver.m_model_manager->process_after_read(),
               "satisfied empty constraints should be accepted");
+
+  Local_MIP infeas_solver;
+  infeas_solver.enable_model_api();
+  infeas_solver.set_bound_strengthen(false);
+  infeas_solver.add_var("x", 0.0, 1.0, 0.0, Var_Type::binary);
+  infeas_solver.add_con(1.0, k_inf, std::vector<int>{}, std::vector<double>{});
+  infeas_solver.m_model_api->build_model(*infeas_solver.m_model_manager);
+  ok &= check(!infeas_solver.m_model_manager->process_after_read(),
+              "unsatisfied empty constraints should make the model infeasible");
 
   return ok;
 }

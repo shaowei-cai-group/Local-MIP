@@ -291,6 +291,52 @@ bool Local_Search::verify_solution() const
   return true;
 }
 
+bool Local_Search::solution_values_valid(const double* p_sol,
+                                         size_t p_var_num) const
+{
+  if (p_sol == nullptr || p_var_num != m_var_num)
+    return false;
+  for (size_t var_idx = 0; var_idx < m_var_num; ++var_idx)
+  {
+    const auto& model_var = m_model_manager->var(var_idx);
+    double value = p_sol[var_idx];
+    if (!std::isfinite(value) || !model_var.in_bound(value))
+      return false;
+    if (!model_var.is_real() &&
+        std::fabs(value - std::round(value)) > k_feas_tolerance)
+      return false;
+  }
+  return true;
+}
+
+bool Local_Search::solution_feasible(const double* p_sol,
+                                     size_t p_var_num) const
+{
+  if (!solution_values_valid(p_sol, p_var_num))
+    return false;
+  if (m_con_num == 0 || m_con_constant.size() < m_con_num ||
+      m_con_is_equality.size() < m_con_num)
+    return false;
+  for (size_t con_idx = 1; con_idx < m_con_num; ++con_idx)
+  {
+    const auto& model_con = m_model_manager->con(con_idx);
+    long double activity = 0.0L;
+    for (size_t term_idx = 0; term_idx < model_con.term_num(); ++term_idx)
+      activity += static_cast<long double>(model_con.coeff(term_idx)) *
+                  static_cast<long double>(
+                      p_sol[model_con.var_idx(term_idx)]);
+    double gap = static_cast<double>(activity) - m_con_constant[con_idx];
+    if (m_con_is_equality[con_idx])
+    {
+      if (std::fabs(gap) > k_feas_tolerance)
+        return false;
+    }
+    else if (gap > k_feas_tolerance)
+      return false;
+  }
+  return true;
+}
+
 void Local_Search::write_sol() const
 {
   printf("c best-found solution is written to %s\n", m_sol_path.c_str());
@@ -687,7 +733,7 @@ void Local_Search::set_break_eq_feas(bool p_enable)
 }
 
 void Local_Search::set_on_improvement_callback(
-    std::function<void(const double*, size_t, double)> p_cbk)
+    Improvement_Cbk p_cbk)
 {
   m_on_improvement_cbk = std::move(p_cbk);
 }
@@ -696,7 +742,7 @@ bool Local_Search::inject_solution(const double* p_sol,
                                    size_t p_var_num,
                                    double p_obj)
 {
-  if (p_sol == nullptr || p_var_num != m_var_num)
+  if (!solution_feasible(p_sol, p_var_num))
     return false;
 
   double internal_obj =
@@ -719,7 +765,7 @@ bool Local_Search::inject_solution(const double* p_sol,
 bool Local_Search::inject_to_current_and_restart(
     const double* p_sol, size_t p_var_num, size_t p_restart_step_override)
 {
-  if (p_sol == nullptr || p_var_num != m_var_num)
+  if (!solution_values_valid(p_sol, p_var_num))
     return false;
 
   memcpy(m_var_current_value.data(), p_sol, m_var_num * sizeof(double));
@@ -736,25 +782,40 @@ void Local_Search::set_exchange_check_interval(size_t p_interval)
   m_exchange_check_interval = p_interval;
 }
 
-void Local_Search::set_exchange_check_callback(std::function<void()> p_cbk)
+void Local_Search::set_exchange_check_callback(Exchange_Check_Cbk p_cbk)
 {
   m_exchange_check_cbk = std::move(p_cbk);
 }
 
 void Local_Search::set_on_infeas_improvement_callback(
-    std::function<void(const double*, size_t, size_t)> p_cbk)
+    Infeas_Improvement_Cbk p_cbk)
 {
   m_on_infeas_improvement_cbk = std::move(p_cbk);
 }
 
-bool Local_Search::inject_infeas_solution(const double*,
-                                          size_t p_var_num,
-                                          size_t p_unsat_num)
+bool Local_Search::inject_infeas_bound(size_t p_var_num,
+                                       size_t p_unsat_num)
 {
   if (m_is_found_feasible || p_var_num != m_var_num ||
       p_unsat_num >= m_min_unsat_con)
     return false;
   m_min_unsat_con = p_unsat_num;
+  return true;
+}
+
+bool Local_Search::inject_infeas_solution(const double* p_sol,
+                                          size_t p_var_num,
+                                          size_t p_unsat_num)
+{
+  if (p_sol != nullptr && !solution_values_valid(p_sol, p_var_num))
+    return false;
+  if (!inject_infeas_bound(p_var_num, p_unsat_num))
+    return false;
+  if (p_sol != nullptr)
+  {
+    memcpy(m_var_current_value.data(), p_sol, m_var_num * sizeof(double));
+    reset_after_restart();
+  }
   return true;
 }
 
