@@ -193,6 +193,9 @@ For iterative local development, `python-bindings/build.sh` still builds the ext
 - Code style: C++20, two-space indentation, local headers before system headers, prefer `printf`-family.
 - Keep CLI parameters in sync with `src/utils/paras.h` and help text.
 
+## Acknowledgements
+We thank [Alexander Hoen](https://alexhoen.github.io/) (HTW Berlin) for contributing and testing the warm-start solution loading feature.
+
 ## Reference
 If you use **Local-MIP** in an academic context, please cite the following articles:
 

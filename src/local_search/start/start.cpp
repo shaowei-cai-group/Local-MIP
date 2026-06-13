@@ -13,6 +13,7 @@
 
 #include "../../model_data/Model_Manager.h"
 #include "../../utils/global_defs.h"
+#include "../../utils/solver_error.h"
 #include "../context/context.h"
 #include "start.h"
 #include <algorithm>
@@ -65,12 +66,21 @@ void Start::set_method(const std::string& p_method_name)
   }
 }
 
-void Start::set_up_start_values(Start_Ctx& p_ctx, std::vector<double>& solution) const
+void Start::set_up_start_values(
+    Start_Ctx& p_ctx,
+    const std::vector<double>& p_start_solution) const
 {
-  if (!solution.empty())
+  if (!p_start_solution.empty())
   {
-    for (int var_idx = 0; var_idx < solution.size(); ++var_idx)
-      p_ctx.m_var_current_value [var_idx] = solution[var_idx];
+    if (p_start_solution.size() != p_ctx.m_var_current_value.size())
+    {
+      throw Solver_Error(
+          "start solution size does not match variable count: " +
+          std::to_string(p_start_solution.size()) +
+          " != " + std::to_string(p_ctx.m_var_current_value.size()));
+    }
+    for (size_t var_idx = 0; var_idx < p_start_solution.size(); ++var_idx)
+      p_ctx.m_var_current_value[var_idx] = p_start_solution[var_idx];
   }
   else if (m_user_cbk)
     m_user_cbk(p_ctx, m_user_data);

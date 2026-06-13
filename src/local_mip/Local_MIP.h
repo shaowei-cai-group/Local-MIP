@@ -34,6 +34,8 @@ private:
 
   std::string m_param_set_file;
 
+  std::string m_start_sol_path;
+
   double m_time_limit;
 
   std::thread m_timeout_thread;
@@ -92,6 +94,8 @@ public:
   void set_log_obj(bool p_enable);
 
   void set_sol_path(const std::string& p_sol_path);
+
+  void set_start_sol_path(const std::string& p_start_sol_path);
 
   void set_random_seed(uint32_t p_seed);
 
@@ -154,9 +158,9 @@ public:
 
   void add_custom_neighbor(const std::string& p_neighbor_name,
                            Local_Search::Neighbor_Cbk p_neighbor_cbk,
-                           void* p_user_data = nullptr) const;
+                           void* p_user_data = nullptr);
 
-  void reset_default_neighbor_list() const;
+  void reset_default_neighbor_list();
 
   void set_tabu_base(size_t p_value);
 

@@ -16,11 +16,11 @@
 #include "../model_data/Model_Manager.h"
 #include "../reader/LP_Reader.h"
 #include "../reader/MPS_Reader.h"
+#include "../reader/Sol_Reader.h"
 #include "../utils/global_defs.h"
 #include "../utils/paras.h"
 #include "../utils/solver_error.h"
 #include "Local_MIP.h"
-#include "reader/SolParser.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -42,7 +42,8 @@
 #include <vector>
 
 Local_MIP::Local_MIP()
-    : m_model_file(""), m_param_set_file(""), m_time_limit(10.0),
+    : m_model_file(""), m_param_set_file(""), m_start_sol_path(""),
+      m_time_limit(10.0),
       m_timeout_thread(),
       m_timeout_mutex(), m_timeout_cv(), m_cancel_timeout(true),
       m_obj_log_thread(), m_stop_obj_log(true), m_log_obj_enabled(true),
@@ -83,6 +84,8 @@ void Local_MIP::set_param_set_file(const std::string& p_param_set_file)
     set_model_file(params.model_file);
   if (params.has_loaded_param("sol_path"))
     set_sol_path(params.sol_path);
+  if (params.has_loaded_param("start_sol_path"))
+    set_start_sol_path(params.start_sol_path);
   if (params.has_loaded_param("time_limit"))
     set_time_limit(params.time_limit);
   if (params.has_loaded_param("random_seed"))
@@ -170,6 +173,13 @@ void Local_MIP::set_sol_path(const std::string& p_sol_path)
 {
   m_local_search->set_sol_path(p_sol_path);
   printf("c sol path is set to : %s\n", p_sol_path.c_str());
+}
+
+void Local_MIP::set_start_sol_path(const std::string& p_start_sol_path)
+{
+  m_start_sol_path = p_start_sol_path;
+  printf("c start solution path is set to : %s\n",
+         m_start_sol_path.c_str());
 }
 
 void Local_MIP::set_random_seed(uint32_t p_seed)
@@ -341,38 +351,38 @@ void Local_MIP::add_neighbor(const std::string& p_neighbor_name,
 void Local_MIP::add_custom_neighbor(
     const std::string& p_neighbor_name,
     Local_Search::Neighbor_Cbk p_neighbor_cbk,
-    void* p_user_data) const
+    void* p_user_data)
 {
   m_local_search->add_custom_neighbor(
       p_neighbor_name, std::move(p_neighbor_cbk), p_user_data);
   printf("c added custom neighbor: %s\n", p_neighbor_name.c_str());
 }
 
-void Local_MIP::reset_default_neighbor_list() const
+void Local_MIP::reset_default_neighbor_list()
 {
   m_local_search->reset_default_neighbor_list();
   printf("c neighbor list reset to default\n");
 }
 
-void Local_MIP::set_tabu_base(const size_t p_value)
+void Local_MIP::set_tabu_base(size_t p_value)
 {
   m_local_search->set_tabu_base(p_value);
   printf("c tabu tenure base : %zu\n", p_value);
 }
 
-void Local_MIP::set_activity_period(const size_t p_value)
+void Local_MIP::set_activity_period(size_t p_value)
 {
   m_local_search->set_activity_period(p_value);
   printf("c constraint activity period : %zu\n", p_value);
 }
 
-void Local_MIP::set_tabu_variation(const size_t p_value)
+void Local_MIP::set_tabu_variation(size_t p_value)
 {
   m_local_search->set_tabu_variation(p_value);
   printf("c tabu tenure variation : %zu\n", p_value);
 }
 
-void Local_MIP::set_break_eq_feas(const bool p_enable)
+void Local_MIP::set_break_eq_feas(bool p_enable)
 {
   m_local_search->set_break_eq_feas(p_enable);
   printf("c break feasibility on equality constraints is set to : %s\n",
@@ -395,15 +405,26 @@ void Local_MIP::run()
     printf("c model is infeasible, skip local search.\n");
     return;
   }
-  std::vector<double> solution;
-  /*TODO currently I assume that the solution file is located next to mps file. I would probably be better to make this a parameter*/
-  SolParser<double>::read(m_model_file, get_model_manager()->get_mapping(), solution);
+  std::vector<double> start_solution;
+  if (!m_start_sol_path.empty())
+  {
+    Sol_Read_Result result =
+        Sol_Reader::read(m_start_sol_path, *m_model_manager, start_solution);
+    if (!result.m_success)
+      throw Solver_Error(result.m_message);
+    printf("c start solution is loaded from : %s\n",
+           m_start_sol_path.c_str());
+    printf("c start solution values : %zu loaded, %zu unknown skipped, "
+           "missing variables set to 0\n",
+           result.m_loaded_var_num,
+           result.m_unknown_var_num);
+  }
 
   g_clk_start = std::chrono::steady_clock::now();
   m_cancel_timeout = false;
   m_timeout_thread = std::thread(&Local_MIP::timeout_handler, this);
   start_obj_logger();
-  m_local_search->run_search(solution);
+  m_local_search->run_search(start_solution);
   stop_obj_logger();
   request_timeout_stop();
   if (m_timeout_thread.joinable())

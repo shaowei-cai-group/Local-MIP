@@ -46,6 +46,7 @@ int main(int argc, char* argv[])
     int log_obj = OPT(log_obj);
     int restart_step = OPT(restart_step);
     std::string sol_path = OPT(sol_path);
+    std::string start_sol_path = OPT(start_sol_path);
     std::string start = OPT(start);
     std::string restart = OPT(restart);
     std::string weight = OPT(weight);
@@ -125,6 +126,8 @@ int main(int argc, char* argv[])
       solver->set_split_eq(false);
     if (!sol_path.empty())
       solver->set_sol_path(sol_path);
+    if (!start_sol_path.empty())
+      solver->set_start_sol_path(start_sol_path);
     solver->run();
     g_solver.store(nullptr, std::memory_order_release);
     return 0;

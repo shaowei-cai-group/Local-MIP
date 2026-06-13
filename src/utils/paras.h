@@ -180,6 +180,11 @@
 #define STR_PARAS                                                         \
   STR_PARA(model_file, 'i', true, "", ".mps/.lp format model file path")  \
   STR_PARA(sol_path, 's', false, "", ".sol format solution path")         \
+  STR_PARA(start_sol_path,                                                \
+           'k',                                                           \
+           false,                                                         \
+           "",                                                            \
+           ".sol format start solution path")                             \
   STR_PARA(start, 'm', false, "zero", "start method: zero/random")        \
   STR_PARA(restart,                                                       \
            'y',                                                           \

@@ -29,16 +29,13 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "reader/SolParser.hpp"
 
-int Local_Search::run_search(std::vector<double>& solution)
+int Local_Search::run_search(const std::vector<double>& p_start_solution)
 {
   init_data();
-
-
   if (solve_objective_only())
     return 0;
-  m_start.set_up_start_values(m_start_ctx, solution);
+  m_start.set_up_start_values(m_start_ctx, p_start_solution);
   init_state();
 
   while (!m_terminated)
@@ -504,12 +501,6 @@ Local_Search::Local_Search(const Model_Manager* p_model_manager)
 Local_Search::~Local_Search()
 {
 }
-void Local_Search::set_current_value(const size_t index,
-                                     const double value)
-{
-  m_var_current_value[index] = value;
-}
-
 void Local_Search::terminate()
 {
   m_terminated = true;
