@@ -66,6 +66,8 @@ bool test_constructor_defaults()
               "reader should be null before prepare_reader()");
   ok &= check(solver.m_model_file.empty(),
               "model file should be empty by default");
+  ok &= check(solver.m_start_sol_path.empty(),
+              "start solution path should be empty by default");
   ok &= check(std::fabs(solver.m_time_limit - 10.0) < 1e-9,
               "default time limit should be 10.0");
   ok &= check(solver.m_cancel_timeout,
@@ -108,6 +110,11 @@ bool test_basic_setters()
   solver.set_sol_path(sol_path);
   ok &= check(solver.m_local_search->m_sol_path == sol_path,
               "set_sol_path should forward to local search");
+
+  const std::string start_sol_path = "test-start.sol";
+  solver.set_start_sol_path(start_sol_path);
+  ok &= check(solver.m_start_sol_path == start_sol_path,
+              "set_start_sol_path should store the provided path");
 
   solver.set_start_method("random");
   ok &= check(solver.m_local_search->m_start.m_default_method ==
@@ -269,6 +276,7 @@ bool test_parameter_file_loading()
   std::fprintf(fp, "bms_unsat_con 88\n");
   std::fprintf(fp, "bms_random_ops = 199\n");
   std::fprintf(fp, "sol_path config.sol\n");
+  std::fprintf(fp, "start_sol_path config-start.sol\n");
   std::fprintf(fp, "tabu_base 7\n");
   std::fprintf(fp, "split_eq 1\n");
   std::fprintf(fp, "c comment line should be ignored\n");
@@ -282,6 +290,8 @@ bool test_parameter_file_loading()
                                        "55",
                                        "--sol_path",
                                        "cli.sol",
+                                       "--start_sol_path",
+                                       "cli-start.sol",
                                        "--split_eq",
                                        "0"};
 
@@ -307,6 +317,8 @@ bool test_parameter_file_loading()
               "config file should set bms_random_ops");
   ok &= check(parameters.sol_path == std::string("cli.sol"),
               "CLI should override config for sol_path");
+  ok &= check(parameters.start_sol_path == std::string("cli-start.sol"),
+              "CLI should override config for start_sol_path");
   ok &= check(parameters.split_eq == 0,
               "CLI should override config for split_eq");
   ok &=
@@ -334,6 +346,7 @@ bool test_library_parameter_file_loading()
   std::fprintf(fp, "bms_unsat_con 88\n");
   std::fprintf(fp, "bms_random_ops = 199\n");
   std::fprintf(fp, "sol_path config.sol\n");
+  std::fprintf(fp, "start_sol_path config-start.sol\n");
   std::fprintf(fp, "tabu_base 7\n");
   std::fprintf(fp, "split_eq 1\n");
   std::fclose(fp);
@@ -356,6 +369,8 @@ bool test_library_parameter_file_loading()
               "set_param_set_file should apply bms_random_ops");
   ok &= check(solver.m_local_search->m_sol_path == std::string("config.sol"),
               "set_param_set_file should apply sol_path");
+  ok &= check(solver.m_start_sol_path == std::string("config-start.sol"),
+              "set_param_set_file should apply start_sol_path");
   ok &= check(solver.m_local_search->m_tabu_base == 7,
               "set_param_set_file should apply tabu_base");
   ok &= check(solver.m_model_manager->m_split_eq,

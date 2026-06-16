@@ -18,6 +18,7 @@ tabu_var = 7                   # int, [1, 100000000], tabu tenure variation (min
 restart_step = 1000000         # int, [0, 100000000], no-improvement steps before restart (0 disables)
 smooth_prob = 1                # int, [0, 10000], weight smooth probability in 1/10000
 start = zero                   # string, start method: zero/random
+# start_sol_path = start.sol   # optional .sol file for warm-start values
 restart = best                 # string, restart strategy: random/best/hybrid
 weight = monotone              # string, weight method: smooth/monotone
 lift_scoring = lift_age        # string, feas scoring: lift_age/lift_random

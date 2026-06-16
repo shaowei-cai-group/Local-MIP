@@ -49,7 +49,9 @@ public:
 
   void set_method(const std::string& p_method_name);
 
-  void set_up_start_values(Start_Ctx& p_ctx) const;
+  void set_up_start_values(
+      Start_Ctx& p_ctx,
+      const std::vector<double>& p_start_solution) const;
 
 private:
   enum class Method

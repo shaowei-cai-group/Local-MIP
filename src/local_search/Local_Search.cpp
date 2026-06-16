@@ -30,13 +30,14 @@
 #include <utility>
 #include <vector>
 
-int Local_Search::run_search()
+int Local_Search::run_search(const std::vector<double>& p_start_solution)
 {
   init_data();
   if (solve_objective_only())
     return 0;
-  m_start.set_up_start_values(m_start_ctx);
+  m_start.set_up_start_values(m_start_ctx, p_start_solution);
   init_state();
+
   while (!m_terminated)
   {
     if (m_restart.execute(m_restart_ctx))
@@ -500,7 +501,6 @@ Local_Search::Local_Search(const Model_Manager* p_model_manager)
 Local_Search::~Local_Search()
 {
 }
-
 void Local_Search::terminate()
 {
   m_terminated = true;

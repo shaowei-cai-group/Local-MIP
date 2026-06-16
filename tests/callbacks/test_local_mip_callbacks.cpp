@@ -126,13 +126,58 @@ bool test_start_cbk_invocation()
   std::mt19937 random_engine(1);
   Start::Start_Ctx context(shared.view, var_values, random_engine);
 
-  solver.m_local_search->m_start.set_up_start_values(context);
+  solver.m_local_search->m_start.set_up_start_values(context, {});
 
   bool ok = true;
   ok &= check(invoked, "start callback should be invoked");
   ok &= check(std::fabs(var_values[0] - 42.0) < 1e-9,
               "start callback should mutate start values");
   return ok;
+}
+
+bool test_start_solution_values()
+{
+  Local_MIP solver;
+
+  SharedData shared(*solver.m_model_manager);
+  std::vector<double> var_values(2, 0.0);
+  std::vector<double> start_solution = {3.0, 4.0};
+  std::mt19937 random_engine(1);
+  Start::Start_Ctx context(shared.view, var_values, random_engine);
+
+  solver.m_local_search->m_start.set_up_start_values(context,
+                                                     start_solution);
+
+  bool ok = true;
+  ok &= check(std::fabs(var_values[0] - 3.0) < 1e-9,
+              "start solution should set first value");
+  ok &= check(std::fabs(var_values[1] - 4.0) < 1e-9,
+              "start solution should set second value");
+  return ok;
+}
+
+bool test_start_solution_size_mismatch()
+{
+  Local_MIP solver;
+
+  SharedData shared(*solver.m_model_manager);
+  std::vector<double> var_values(2, 0.0);
+  std::vector<double> start_solution = {3.0};
+  std::mt19937 random_engine(1);
+  Start::Start_Ctx context(shared.view, var_values, random_engine);
+
+  bool threw = false;
+  try
+  {
+    solver.m_local_search->m_start.set_up_start_values(context,
+                                                       start_solution);
+  }
+  catch (...)
+  {
+    threw = true;
+  }
+
+  return check(threw, "start solution size mismatch should throw");
 }
 
 bool test_restart_cbk_invocation()
@@ -341,6 +386,8 @@ int main()
 {
   bool ok = true;
   ok &= test_start_cbk_invocation();
+  ok &= test_start_solution_values();
+  ok &= test_start_solution_size_mismatch();
   ok &= test_restart_cbk_invocation();
   ok &= test_weight_cbk_invocation();
   ok &= test_lift_scoring_cbk_invocation();

@@ -32,6 +32,7 @@
 #include "reader/LP_Reader.h"
 #include "reader/MPS_Reader.h"
 #include "reader/Model_Reader.h"
+#include "reader/Sol_Reader.h"
 #undef private
 #undef protected
 
@@ -286,6 +287,137 @@ protected:
   }
 };
 
+class Test_Sol_Reader_Partial_Start : public Test_Runner
+{
+public:
+  Test_Sol_Reader_Partial_Start()
+      : Test_Runner("SOL Reader Partial Start") {}
+
+protected:
+  void execute() override
+  {
+    const char* sol_file = "tmp_start.sol";
+    std::FILE* fp = std::fopen(sol_file, "w");
+    if (fp == nullptr)
+    {
+      check(false, "Should create temporary solution file");
+      return;
+    }
+
+    std::fprintf(fp, "Variable name        Variable value\n");
+    std::fprintf(fp, "x17750 1\n");
+    std::fprintf(fp, "x17751 2.5\n");
+    std::fprintf(fp, "unknown_var 3\n");
+    std::fclose(fp);
+
+    Model_Manager manager;
+    MPS_Reader reader(&manager);
+    reader.read(TEST_MPS_PATH);
+    manager.process_after_read();
+
+    std::vector<double> solution;
+    Sol_Read_Result result =
+        Sol_Reader::read(sol_file, manager, solution);
+
+    check(result.m_success, "Should read valid SOL file");
+    check(solution.size() == manager.var_num(),
+          "Solution vector should match variable count");
+    check(result.m_loaded_var_num == 2,
+          "Should count loaded solution values");
+    check(result.m_unknown_var_num == 1,
+          "Should count unknown solution variables");
+    check(std::fabs(solution[manager.var("x17750").idx()] - 1.0) < 1e-9,
+          "Should load first start value");
+    check(std::fabs(solution[manager.var("x17751").idx()] - 2.5) < 1e-9,
+          "Should load second start value");
+    check(std::fabs(solution[manager.var("x17752").idx()]) < 1e-9,
+          "Missing variables should be filled with zero");
+
+    std::remove(sol_file);
+  }
+};
+
+class Test_Sol_Reader_Bound_Error : public Test_Runner
+{
+public:
+  Test_Sol_Reader_Bound_Error()
+      : Test_Runner("SOL Reader Bound Error") {}
+
+protected:
+  void execute() override
+  {
+    const char* sol_file = "tmp_start_bound_error.sol";
+    std::FILE* fp = std::fopen(sol_file, "w");
+    if (fp == nullptr)
+    {
+      check(false, "Should create temporary solution file");
+      return;
+    }
+
+    std::fprintf(fp, "Variable name        Variable value\n");
+    std::fprintf(fp, "x17752 1\n");
+    std::fclose(fp);
+
+    Model_Manager manager;
+    MPS_Reader reader(&manager);
+    reader.read(TEST_MPS_PATH);
+    manager.process_after_read();
+
+    std::vector<double> solution;
+    Sol_Read_Result result =
+        Sol_Reader::read(sol_file, manager, solution);
+
+    check(!result.m_success, "Out-of-bound start value should fail");
+    check(result.m_message.find("out of bounds") != std::string::npos,
+          "Error should describe bound violation");
+    check(result.m_message.find(":2") != std::string::npos,
+          "Error should include source line number");
+
+    std::remove(sol_file);
+  }
+};
+
+class Test_Sol_Reader_Duplicate_Variable : public Test_Runner
+{
+public:
+  Test_Sol_Reader_Duplicate_Variable()
+      : Test_Runner("SOL Reader Duplicate Variable") {}
+
+protected:
+  void execute() override
+  {
+    const char* sol_file = "tmp_start_duplicate.sol";
+    std::FILE* fp = std::fopen(sol_file, "w");
+    if (fp == nullptr)
+    {
+      check(false, "Should create temporary solution file");
+      return;
+    }
+
+    std::fprintf(fp, "Variable name        Variable value\n");
+    std::fprintf(fp, "x17750 1\n");
+    std::fprintf(fp, "x17750 2\n");
+    std::fclose(fp);
+
+    Model_Manager manager;
+    MPS_Reader reader(&manager);
+    reader.read(TEST_MPS_PATH);
+    manager.process_after_read();
+
+    std::vector<double> solution;
+    Sol_Read_Result result =
+        Sol_Reader::read(sol_file, manager, solution);
+
+    check(!result.m_success, "Duplicate start value should fail");
+    check(result.m_message.find("duplicate") != std::string::npos,
+          "Error should describe duplicate variable");
+    check(result.m_message.find(":3") != std::string::npos,
+          "Error should include source line number");
+
+    std::remove(sol_file);
+  }
+};
+
 } // namespace
 
 int main()
@@ -300,6 +432,9 @@ int main()
   suite.add_test(new Test_Reader_Error_Handling());
   suite.add_test(new Test_Variable_Bounds_Parsing());
   suite.add_test(new Test_Constraint_Type_Integration());
+  suite.add_test(new Test_Sol_Reader_Partial_Start());
+  suite.add_test(new Test_Sol_Reader_Bound_Error());
+  suite.add_test(new Test_Sol_Reader_Duplicate_Variable());
 
   bool ok = suite.run_all();
 

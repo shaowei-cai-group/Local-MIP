@@ -796,6 +796,9 @@ PYBIND11_MODULE(localmip_py, m)
            &Local_MIP::set_time_limit,
            py::arg("seconds"))
       .def("set_sol_path", &Local_MIP::set_sol_path, py::arg("path"))
+      .def("set_start_sol_path",
+           &Local_MIP::set_start_sol_path,
+           py::arg("path"))
       .def("set_log_obj", &Local_MIP::set_log_obj, py::arg("enable"))
       .def("set_bound_strengthen",
            &Local_MIP::set_bound_strengthen,
