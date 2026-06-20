@@ -30,13 +30,15 @@
 #include <vector>
 
 MPS_Reader::MPS_Reader(Model_Manager* p_model_manager)
-    : m_model_manager(p_model_manager), m_integrality_marker(false)
+    : m_model_manager(p_model_manager), m_integrality_marker(false),
+      m_small_coeff_counter(0)
 {
 }
 
 void MPS_Reader::read(const char* p_model_file)
 {
   auto start_time = std::chrono::high_resolution_clock::now();
+  m_small_coeff_counter = 0;
   std::ifstream infile(p_model_file);
   if (!infile)
   {
@@ -326,6 +328,10 @@ void MPS_Reader::read(const char* p_model_file)
       continue;
   }
   infile.close();
+  if (m_small_coeff_counter > 0)
+    printf("c skipped %zu coefficients smaller than %.3e.\n",
+           m_small_coeff_counter,
+           k_zero_tolerance);
   auto end_time = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       end_time - start_time);
@@ -339,7 +345,7 @@ void MPS_Reader::add_coeff_var_to_con(const std::string& p_con_name,
 {
   if (std::fabs(p_coeff) < k_zero_tolerance)
   {
-    printf("c coefficient is too small %lf, skipping...\n", p_coeff);
+    ++m_small_coeff_counter;
     return;
   }
   size_t con_idx;

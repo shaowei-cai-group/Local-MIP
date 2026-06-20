@@ -35,6 +35,9 @@ void signal_handler(int p_signal)
 
 int main(int argc, char* argv[])
 {
+  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  std::setvbuf(stderr, nullptr, _IONBF, 0);
+
   INIT_ARGS;
   std::signal(SIGINT, signal_handler);
   std::signal(SIGTERM, signal_handler);

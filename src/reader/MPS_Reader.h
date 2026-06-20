@@ -30,6 +30,8 @@ private:
 
   bool m_integrality_marker;
 
+  size_t m_small_coeff_counter;
+
   inline void iss_setup();
 
   void add_coeff_var_to_con(const std::string& p_con_name,
