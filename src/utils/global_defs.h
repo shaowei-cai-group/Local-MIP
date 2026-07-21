@@ -43,6 +43,12 @@ extern double k_opt_tolerance;
 
 extern double k_zero_tolerance;
 
+inline bool is_integral_within_tolerance(double p_value)
+{
+  return std::isfinite(p_value) &&
+         std::fabs(p_value - std::round(p_value)) <= k_feas_tolerance;
+}
+
 enum class Var_Type
 {
   binary,

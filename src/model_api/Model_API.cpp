@@ -278,8 +278,11 @@ void Model_API::build_model(Model_Manager& p_model_manager)
     size_t var_idx = p_model_manager.make_var(var.m_name, is_integer);
     api_to_mgr_idx[i] = var_idx;
     auto& model_var = p_model_manager.var(var_idx);
-    model_var.set_lower_bound(var.m_lb);
-    model_var.set_upper_bound(var.m_ub);
+    const double lower_bound =
+        var.m_lb <= k_neg_inf ? k_neg_inf : var.m_lb;
+    const double upper_bound = var.m_ub >= k_inf ? k_inf : var.m_ub;
+    model_var.set_lower_bound(lower_bound);
+    model_var.set_upper_bound(upper_bound);
     if (var.m_type == Var_Type::binary)
       model_var.set_type(Var_Type::binary);
     else if (var.m_type == Var_Type::general_integer)

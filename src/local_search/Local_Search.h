@@ -14,7 +14,6 @@
 #pragma once
 #include "../model_data/Model_Con.h"
 #include "../model_data/Model_Manager.h"
-#include "../model_data/Model_Var.h"
 #include "../utils/global_defs.h"
 #include "context/context.h"
 #include "neighbor/neighbor.h"
@@ -30,12 +29,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <functional>
 #include <limits>
 #include <random>
 #include <string>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 class Local_Search
@@ -207,6 +204,11 @@ private:
 
   inline void publish_best_obj();
 
+  void normalize_domain_values(std::vector<double>& p_values,
+                               const char* p_source) const;
+
+  bool verify_domain_values(const std::vector<double>& p_values) const;
+
   bool verify_solution() const;
 
   bool solve_objective_only();
@@ -214,6 +216,12 @@ private:
   void init_state();
 
   void refresh_activities();
+
+  double checked_move_value(size_t p_var_idx,
+                            double p_delta,
+                            const char* p_source) const;
+
+  void validate_neighbor_operations();
 
   inline void reset_op(bool p_require_positive);
 
@@ -244,7 +252,10 @@ public:
 
   ~Local_Search();
 
-  int run_search(const std::vector<double>& p_start_solution = {});
+  int run_search(const std::vector<double>& p_start_solution = {},
+                 const std::vector<char>& p_start_mask = {});
+
+  bool finalize_result();
 
   void output_result() const;
 
@@ -450,6 +461,11 @@ Local_Search::explore_neighbor(std::vector<Neighbor>& p_explore_neighbors)
       m_weight.update(m_weight_ctx);
     }
     neighbor.explore(m_neighbor_ctx);
+    if (neighbor.is_user_defined())
+      validate_neighbor_operations();
+    else
+      assert(m_op_size <= m_op_var_idxs.size() &&
+             m_op_size <= m_op_var_deltas.size());
     for (size_t op_idx = 0; op_idx < m_op_size; ++op_idx)
     {
       m_scoring.score_neighbor(

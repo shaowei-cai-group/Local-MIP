@@ -71,6 +71,8 @@ def run_file_solver_smoke():
             if binary_idxs:
                 var = ctx.shared.model_manager.var(binary_idxs[0])
                 require(var.is_binary(), "model var lookup should work in Python")
+                require(var.requires_integrality(),
+                        "binary model var should retain integrality metadata")
                 ctx.current_values[binary_idxs[0]] = 0.0
 
         def custom_neighbor(ctx, user_data):
@@ -292,7 +294,8 @@ def run_model_api_smoke():
     solver.set_start_cbk(legacy_start)
 
     x = solver.add_var("x", 0.0, 1.0, 1.0, lm.VarType.binary)
-    y = solver.add_var("y", 0.0, 2.0, 0.5, lm.VarType.general_integer)
+    y = solver.add_var("y", 0.0, math.inf, 0.5,
+                       lm.VarType.general_integer)
 
     manager = solver.get_model_manager()
     require(manager.var_num == 0,
@@ -323,6 +326,8 @@ def run_model_api_smoke():
 
     require(solver.get_model_manager().is_min is False,
             "ModelManager.is_min should be a real boolean for maximize models")
+    require(math.isfinite(solver.get_model_manager().var(y).upper_bound),
+            "Model API should canonicalize an infinite variable upper bound")
     sol = solver.get_solution()
     require(len(sol) == 2, "model API solution vector should be exposed")
     require(legacy_calls["start"] > 0,

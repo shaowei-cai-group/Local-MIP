@@ -15,6 +15,7 @@
 #include "../model_data/Model_Manager.h"
 #include "../utils/solver_error.h"
 #include "Model_Reader.h"
+#include <cctype>
 #include <cstddef>
 #include <sstream>
 #include <string>
@@ -33,6 +34,8 @@ private:
   size_t m_small_coeff_counter;
 
   inline void iss_setup();
+
+  bool read_optional_bound_value(double& p_value);
 
   void add_coeff_var_to_con(const std::string& p_con_name,
                             double p_coeff,
@@ -58,7 +61,6 @@ inline void MPS_Reader::iss_setup()
   m_iss.str(m_read_line);
   m_iss.seekg(0, std::ios::beg);
 }
-
 
 inline bool MPS_Reader::is_blank(const std::string& a) const
 {

@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
@@ -482,6 +483,293 @@ bool test_library_parameter_file_errors()
   return ok;
 }
 
+bool test_integrality_guards()
+{
+  bool ok = true;
+
+  {
+    const double inf = std::numeric_limits<double>::infinity();
+    Local_MIP solver;
+    solver.enable_model_api();
+    int x = solver.add_var("x", -inf, inf, 0.0, Var_Type::real);
+    solver.set_log_obj(false);
+    solver.run();
+
+    const auto& model_var =
+        solver.get_model_manager()->var(static_cast<size_t>(x));
+    ok &= check(solver.is_feasible(),
+                "Model API should accept infinite variable bounds");
+    ok &= check(model_var.lower_bound() == k_neg_inf &&
+                    model_var.upper_bound() == k_inf,
+                "Model API should canonicalize infinite variable bounds");
+  }
+
+  {
+    Local_MIP solver;
+    solver.enable_model_api();
+    int x = solver.add_var("x", 0.0, 1.0, 0.0, Var_Type::binary);
+    solver.add_con(k_neg_inf, 1.0, std::vector<int>{x},
+                   std::vector<double>{1.0});
+    solver.set_start_cbk(
+        [x](Start::Start_Ctx& ctx, void*)
+        { ctx.m_var_current_value[x] = 0.5; });
+    solver.set_log_obj(false);
+
+    bool threw = false;
+    try
+    {
+      solver.run();
+    }
+    catch (const std::exception& ex)
+    {
+      threw = std::string(ex.what()).find("initial solution violates") !=
+              std::string::npos;
+    }
+    ok &= check(threw,
+                "Fractional integer value from start callback should fail");
+    ok &= check(!solver.is_feasible(),
+                "Rejected start callback must not create a feasible result");
+    ok &= check(solver.m_cancel_timeout &&
+                    !solver.m_timeout_thread.joinable(),
+                "Callback validation errors should clean up timeout thread");
+  }
+
+  Local_MIP valid_solver;
+  valid_solver.enable_model_api();
+  int x = valid_solver.add_var(
+      "x", 0.0, 1.0, 0.0, Var_Type::binary);
+  valid_solver.add_con(k_neg_inf,
+                       1.0,
+                       std::vector<int>{x},
+                       std::vector<double>{1.0});
+  valid_solver.set_start_cbk(
+      [x](Start::Start_Ctx& ctx, void*)
+      {
+        ctx.m_var_current_value[x] =
+            1.0 - 0.5 * k_feas_tolerance;
+      });
+  valid_solver.set_log_obj(false);
+  valid_solver.run();
+  ok &= check(valid_solver.is_feasible(),
+              "Near-integer callback value should remain feasible");
+  ok &= check(std::fabs(valid_solver.get_solution()[x] - 1.0) < 1e-12,
+              "Near-integer callback value should be canonicalized");
+
+  valid_solver.m_local_search->m_var_current_value[x] = 0.0;
+  valid_solver.m_local_search->apply_move(
+      x, 1.0 - 0.5 * k_feas_tolerance);
+  ok &= check(valid_solver.m_local_search->m_var_current_value[x] == 1.0,
+              "Accepted integer move should store an exact integer value");
+
+  bool move_threw = false;
+  valid_solver.m_local_search->m_var_current_value[x] = 0.0;
+  try
+  {
+    valid_solver.m_local_search->apply_move(x, 0.5);
+  }
+  catch (const std::exception& ex)
+  {
+    move_threw =
+        std::string(ex.what()).find("move violates variable domain") !=
+        std::string::npos;
+  }
+  ok &= check(move_threw,
+              "Fractional move on integer variable should be rejected");
+
+  bool bound_move_threw = false;
+  try
+  {
+    valid_solver.m_local_search->apply_move(x, 2.0);
+  }
+  catch (const std::exception& ex)
+  {
+    bound_move_threw =
+        std::string(ex.what()).find("move violates variable domain") !=
+        std::string::npos;
+  }
+  ok &= check(bound_move_threw,
+              "Out-of-bound moves should be rejected, not clipped");
+
+  const bool saved_feasible =
+      valid_solver.m_local_search->m_is_found_feasible;
+  const bool saved_breakthrough =
+      valid_solver.m_local_search->m_current_obj_breakthrough;
+  const double saved_obj_constant =
+      valid_solver.m_local_search->m_con_constant[0];
+
+  valid_solver.m_local_search->m_is_found_feasible = true;
+  valid_solver.m_local_search->m_con_constant[0] = -1.0;
+  valid_solver.m_local_search->m_current_obj_breakthrough = true;
+  valid_solver.m_local_search->refresh_activities();
+  ok &= check(!valid_solver.m_local_search->m_current_obj_breakthrough,
+              "Activity refresh should clear a stale breakthrough");
+
+  valid_solver.m_local_search->m_con_constant[0] = 1.0;
+  valid_solver.m_local_search->refresh_activities();
+  ok &= check(valid_solver.m_local_search->m_current_obj_breakthrough,
+              "Activity refresh should detect an exact breakthrough");
+
+  valid_solver.m_local_search->m_is_found_feasible = false;
+  valid_solver.m_local_search->m_con_constant[0] = k_inf;
+  valid_solver.m_local_search->refresh_activities();
+  ok &= check(valid_solver.m_local_search->m_current_obj_breakthrough,
+              "Breakthrough state should depend only on objective values");
+
+  valid_solver.m_local_search->m_is_found_feasible = saved_feasible;
+  valid_solver.m_local_search->m_current_obj_breakthrough =
+      saved_breakthrough;
+  valid_solver.m_local_search->m_con_constant[0] = saved_obj_constant;
+
+  bool neighbor_index_threw = false;
+  valid_solver.m_local_search->m_op_var_idxs = {
+      valid_solver.m_local_search->m_var_num};
+  valid_solver.m_local_search->m_op_var_deltas = {1.0};
+  valid_solver.m_local_search->m_op_size = 1;
+  try
+  {
+    valid_solver.m_local_search->validate_neighbor_operations();
+  }
+  catch (const std::exception& ex)
+  {
+    neighbor_index_threw =
+        std::string(ex.what()).find("variable index is out of range") !=
+        std::string::npos;
+  }
+  ok &= check(neighbor_index_threw,
+              "Invalid custom-neighbor index should fail before scoring");
+
+  std::vector<Neighbor> invalid_custom_neighbors;
+  invalid_custom_neighbors.emplace_back(
+      "invalid",
+      [](Neighbor::Neighbor_Ctx& ctx, void*)
+      {
+        ctx.set_single_op(ctx.m_shared.m_model_manager.var_num(), 1.0);
+      });
+  bool custom_neighbor_threw = false;
+  try
+  {
+    valid_solver.m_local_search->explore_neighbor(
+        invalid_custom_neighbors);
+  }
+  catch (const std::exception& ex)
+  {
+    custom_neighbor_threw =
+        std::string(ex.what()).find("variable index is out of range") !=
+        std::string::npos;
+  }
+  ok &= check(custom_neighbor_threw,
+              "Custom-neighbor output should be validated before scoring");
+
+  const char* invalid_output_file = "tmp_invalid_integer_output.sol";
+  std::remove(invalid_output_file);
+  valid_solver.set_sol_path(invalid_output_file);
+  valid_solver.m_local_search->m_var_best_value[x] = 0.5;
+  valid_solver.m_local_search->m_is_found_feasible = true;
+  valid_solver.m_local_search->write_sol();
+  ok &= check(!valid_solver.m_local_search->finalize_result(),
+              "Invalid integer result should fail final validation");
+  ok &= check(!valid_solver.is_feasible(),
+              "Failed final integrality verification should clear status");
+  std::FILE* invalid_output = std::fopen(invalid_output_file, "r");
+  ok &= check(invalid_output == nullptr,
+              "Invalid integer solution must not be written");
+  if (invalid_output != nullptr)
+  {
+    std::fclose(invalid_output);
+    std::remove(invalid_output_file);
+  }
+
+  {
+    Local_MIP restart_solver;
+    restart_solver.enable_model_api();
+    int restart_x = restart_solver.add_var(
+        "x", 0.0, 1.0, 0.0, Var_Type::binary);
+    restart_solver.add_con(1.0,
+                           k_inf,
+                           std::vector<int>{restart_x},
+                           std::vector<double>{1.0});
+    restart_solver.add_con(k_neg_inf,
+                           0.0,
+                           std::vector<int>{restart_x},
+                           std::vector<double>{1.0});
+    restart_solver.set_bound_strengthen(0);
+    restart_solver.set_restart_step(1);
+    restart_solver.set_restart_cbk(
+        [restart_x](Restart::Restart_Ctx& ctx, void*)
+        { ctx.m_var_current_value[restart_x] = 0.5; });
+    restart_solver.set_time_limit(0.2);
+    restart_solver.set_log_obj(false);
+
+    bool restart_threw = false;
+    try
+    {
+      restart_solver.run();
+    }
+    catch (const std::exception& ex)
+    {
+      restart_threw =
+          std::string(ex.what()).find("restart solution violates") !=
+          std::string::npos;
+    }
+    ok &= check(restart_threw,
+                "Fractional integer value from restart callback should fail");
+  }
+
+  const char* objective_only_file =
+      "tmp_objective_only_integer_bounds.lp";
+  std::FILE* fp = std::fopen(objective_only_file, "w");
+  if (fp == nullptr)
+    return check(false, "Should create objective-only LP file");
+  std::fprintf(fp,
+               "Minimize\n obj: x\nBounds\n 0.5 <= x <= 2.5\n"
+               "General\n x\nEnd\n");
+  std::fclose(fp);
+
+  Local_MIP objective_only_solver;
+  objective_only_solver.set_model_file(objective_only_file);
+  objective_only_solver.set_log_obj(false);
+  objective_only_solver.run();
+  ok &= check(objective_only_solver.is_feasible(),
+              "Objective-only integer model should be feasible");
+  ok &= check(
+      std::fabs(objective_only_solver.get_solution()[0] - 1.0) < 1e-12,
+      "Objective-only shortcut should choose an integer bound");
+  std::remove(objective_only_file);
+
+  const char* partial_file = "tmp_partial_domain_start.sol";
+  fp = std::fopen(partial_file, "w");
+  if (fp == nullptr)
+    return check(false, "Should create partial warm-start file");
+  std::fprintf(fp, "Variable name        Variable value\n");
+  std::fprintf(fp, "x 0\n");
+  std::fclose(fp);
+
+  Local_MIP partial_solver;
+  partial_solver.enable_model_api();
+  int partial_x = partial_solver.add_var(
+      "x", 0.0, 1.0, 0.0, Var_Type::binary);
+  int y = partial_solver.add_var(
+      "y", 2.0, 3.0, 0.0, Var_Type::general_integer);
+  partial_solver.add_con(k_neg_inf,
+                         1.0,
+                         std::vector<int>{partial_x},
+                         std::vector<double>{1.0});
+  partial_solver.add_con(k_neg_inf,
+                         3.0,
+                         std::vector<int>{y},
+                         std::vector<double>{1.0});
+  partial_solver.set_start_sol_path(partial_file);
+  partial_solver.set_log_obj(false);
+  partial_solver.run();
+  ok &= check(partial_solver.is_feasible(),
+              "Partial warm start should produce a valid solution");
+  ok &= check(std::fabs(partial_solver.get_solution()[y] - 2.0) < 1e-12,
+              "Missing warm-start value should use domain-valid zero start");
+  std::remove(partial_file);
+
+  return ok;
+}
+
 } // namespace
 
 int main()
@@ -494,6 +782,7 @@ int main()
   ok &= test_parameter_file_loading();
   ok &= test_library_parameter_file_loading();
   ok &= test_library_parameter_file_errors();
+  ok &= test_integrality_guards();
 
   if (!ok)
   {

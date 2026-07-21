@@ -43,11 +43,9 @@
 
 Local_MIP::Local_MIP()
     : m_model_file(""), m_param_set_file(""), m_start_sol_path(""),
-      m_time_limit(10.0),
-      m_timeout_thread(),
-      m_timeout_mutex(), m_timeout_cv(), m_cancel_timeout(true),
-      m_obj_log_thread(), m_stop_obj_log(true), m_log_obj_enabled(true),
-      m_reader(nullptr),
+      m_time_limit(10.0), m_timeout_thread(), m_timeout_mutex(),
+      m_timeout_cv(), m_cancel_timeout(true), m_obj_log_thread(),
+      m_stop_obj_log(true), m_log_obj_enabled(true), m_reader(nullptr),
       m_model_manager(std::make_unique<Model_Manager>()),
       m_local_search(
           std::make_unique<Local_Search>(m_model_manager.get())),
@@ -406,30 +404,48 @@ void Local_MIP::run()
     return;
   }
   std::vector<double> start_solution;
+  std::vector<char> start_solution_mask;
   if (!m_start_sol_path.empty())
   {
-    Sol_Read_Result result =
-        Sol_Reader::read(m_start_sol_path, *m_model_manager, start_solution);
+    Sol_Read_Result result = Sol_Reader::read(m_start_sol_path,
+                                              *m_model_manager,
+                                              start_solution,
+                                              &start_solution_mask);
     if (!result.m_success)
       throw Solver_Error(result.m_message);
     printf("c start solution is loaded from : %s\n",
            m_start_sol_path.c_str());
     printf("c start solution values : %zu loaded, %zu unknown skipped, "
-           "missing variables set to 0\n",
+           "missing variables initialized by zero start\n",
            result.m_loaded_var_num,
            result.m_unknown_var_num);
   }
 
   g_clk_start = std::chrono::steady_clock::now();
   m_cancel_timeout = false;
-  m_timeout_thread = std::thread(&Local_MIP::timeout_handler, this);
-  start_obj_logger();
-  m_local_search->run_search(start_solution);
-  stop_obj_logger();
-  request_timeout_stop();
-  if (m_timeout_thread.joinable())
-    m_timeout_thread.join();
-  m_local_search->output_result();
+  auto stop_background_tasks = [this]()
+  {
+    stop_obj_logger();
+    request_timeout_stop();
+    if (m_timeout_thread.joinable())
+      m_timeout_thread.join();
+  };
+  try
+  {
+    m_timeout_thread = std::thread(&Local_MIP::timeout_handler, this);
+    start_obj_logger();
+    m_local_search->run_search(start_solution, start_solution_mask);
+  }
+  catch (...)
+  {
+    stop_background_tasks();
+    throw;
+  }
+  stop_background_tasks();
+  if (m_local_search->finalize_result())
+    m_local_search->output_result();
+  else
+    printf("o solution verify failed.\n");
   printf("c [%10.2lf] local search is finished.\n", elapsed_time());
 }
 

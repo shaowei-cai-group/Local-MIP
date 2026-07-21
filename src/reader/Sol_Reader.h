@@ -36,7 +36,8 @@ class Sol_Reader
 public:
   static Sol_Read_Result read(const std::string& p_sol_file,
                               const Model_Manager& p_model_manager,
-                              std::vector<double>& p_solution);
+                              std::vector<double>& p_solution,
+                              std::vector<char>* p_loaded_mask = nullptr);
 
 private:
   static std::string trim(const std::string& p_text);

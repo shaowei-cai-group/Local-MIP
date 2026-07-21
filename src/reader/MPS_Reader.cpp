@@ -26,6 +26,7 @@
 #include <ios>
 #include <iostream>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -35,9 +36,27 @@ MPS_Reader::MPS_Reader(Model_Manager* p_model_manager)
 {
 }
 
+bool MPS_Reader::read_optional_bound_value(double& p_value)
+{
+  std::string value_text;
+  if (!(m_iss >> value_text))
+    return false;
+
+  std::istringstream value_stream(value_text);
+  char trailing_char = '\0';
+  if (!(value_stream >> p_value) || (value_stream >> trailing_char))
+    printf_error_line(m_read_line);
+
+  std::string extra_field;
+  if (m_iss >> extra_field)
+    printf_error_line(m_read_line);
+  return true;
+}
+
 void MPS_Reader::read(const char* p_model_file)
 {
   auto start_time = std::chrono::high_resolution_clock::now();
+  m_integrality_marker = false;
   m_small_coeff_counter = 0;
   std::ifstream infile(p_model_file);
   if (!infile)
@@ -55,10 +74,10 @@ void MPS_Reader::read(const char* p_model_file)
   char con_type;
   std::string con_name;
   std::string var_name;
-  double coeff;
-  double rhs;
+  double coeff = 0.0;
+  double rhs = 0.0;
   std::string bound_type;
-  double input_bound;
+  double input_bound = 0.0;
   while (std::getline(infile, m_read_line)) // NAME section
   {
     if (m_read_line.empty() || m_read_line[0] == '*')
@@ -140,22 +159,41 @@ void MPS_Reader::read(const char* p_model_file)
     }
     if (con_name == "\'MARKER\'")
     {
-      m_iss >> temp_str;
-      if (temp_str != "\'INTORG\'" && temp_str != "\'INTEND\'")
+      if (!(m_iss >> temp_str))
         printf_error_line(m_read_line);
-      m_integrality_marker = !m_integrality_marker;
+      if (temp_str == "\'INTORG\'")
+      {
+        if (m_integrality_marker)
+          printf_error_line(m_read_line);
+        m_integrality_marker = true;
+      }
+      else if (temp_str == "\'INTEND\'")
+      {
+        if (!m_integrality_marker)
+          printf_error_line(m_read_line);
+        m_integrality_marker = false;
+      }
+      else
+        printf_error_line(m_read_line);
       continue;
     }
     if (!(m_iss >> coeff))
+      printf_error_line(m_read_line);
+    if (!std::isfinite(coeff))
       printf_error_line(m_read_line);
     add_coeff_var_to_con(con_name, coeff, var_name);
     if (m_iss >> con_name)
     {
       if (!(m_iss >> coeff))
         printf_error_line(m_read_line);
+      if (!std::isfinite(coeff))
+        printf_error_line(m_read_line);
       add_coeff_var_to_con(con_name, coeff, var_name);
     }
   }
+  if (m_integrality_marker)
+    throw Solver_Error("c unterminated INTORG marker in COLUMNS section");
+  std::string selected_rhs_name;
   while (std::getline(infile, m_read_line)) // rhs  section
   {
     if (m_read_line.empty() || m_read_line[0] == '*')
@@ -173,17 +211,27 @@ void MPS_Reader::read(const char* p_model_file)
       else
         continue;
     }
-    m_model_manager->set_rhs(con_name, rhs);
+    if (!std::isfinite(rhs))
+      printf_error_line(m_read_line);
+    if (selected_rhs_name.empty())
+      selected_rhs_name = temp_str;
+    const bool use_rhs = temp_str == selected_rhs_name;
+    if (use_rhs)
+      m_model_manager->set_rhs(con_name, rhs);
     if (m_iss >> con_name)
     {
       if (!(m_iss >> rhs))
         printf_error_line(m_read_line);
-      m_model_manager->set_rhs(con_name, rhs);
+      if (!std::isfinite(rhs))
+        printf_error_line(m_read_line);
+      if (use_rhs)
+        m_model_manager->set_rhs(con_name, rhs);
     }
   }
   if (!m_read_line.empty() && m_read_line[0] == 'R') // RANGES section
   {
     size_t range_con_counter = 0;
+    std::string selected_range_name;
     auto make_range_con_name =
         [&range_con_counter](const std::string& base_name)
     {
@@ -256,15 +304,27 @@ void MPS_Reader::read(const char* p_model_file)
         else
           continue;
       }
-      apply_range_to_row(con_name, range_value);
+      if (!std::isfinite(range_value))
+        printf_error_line(m_read_line);
+      if (selected_range_name.empty())
+        selected_range_name = temp_str;
+      const bool use_range = temp_str == selected_range_name;
+      if (use_range)
+        apply_range_to_row(con_name, range_value);
       while (m_iss >> con_name)
       {
         if (!(m_iss >> range_value))
           printf_error_line(m_read_line);
-        apply_range_to_row(con_name, range_value);
+        if (!std::isfinite(range_value))
+          printf_error_line(m_read_line);
+        if (use_range)
+          apply_range_to_row(con_name, range_value);
       }
     }
   }
+  std::string selected_bound_name;
+  std::unordered_set<std::string> lower_bound_vars;
+  std::unordered_set<std::string> upper_bound_vars;
   while (std::getline(infile, m_read_line)) // BOUNDS section
   {
     if (m_read_line.empty() || m_read_line[0] == '*')
@@ -281,51 +341,98 @@ void MPS_Reader::read(const char* p_model_file)
       else
         continue;
     }
-    m_iss >> input_bound;
-    if (m_model_manager->exists_var(var_name))
-    {
-      auto& var = m_model_manager->var(var_name);
-      if (var.type() == Var_Type::binary)
-      {
-        var.set_type(Var_Type::general_integer);
-        var.set_upper_bound(k_inf);
-      }
-      if (bound_type == "UP")
-        var.set_upper_bound(input_bound);
-      else if (bound_type == "LO")
-        var.set_lower_bound(input_bound);
-      else if (bound_type == "BV")
-      {
-        var.set_type(Var_Type::binary);
-        var.set_upper_bound(1.0);
-        var.set_lower_bound(0.0);
-      }
-      else if (bound_type == "LI")
-        var.set_lower_bound(input_bound);
-      else if (bound_type == "UI")
-        var.set_upper_bound(input_bound);
-      else if (bound_type == "FX")
-      {
-        if (!var.is_real() &&
-            std::fabs(input_bound - std::round(input_bound)) >
-                k_feas_tolerance)
-          var.set_type(Var_Type::real);
-        var.set_lower_bound(input_bound);
-        var.set_upper_bound(input_bound);
-        var.set_type(Var_Type::fixed);
-      }
-      else if (bound_type == "FR")
-      {
-        var.set_upper_bound(k_inf);
-        var.set_lower_bound(k_neg_inf);
-      }
-      else if (bound_type == "MI")
-        var.set_lower_bound(k_neg_inf);
-      else if (bound_type == "PL")
-        var.set_upper_bound(k_inf);
-    }
-    else
+    const bool requires_value =
+        bound_type == "UP" || bound_type == "LO" ||
+        bound_type == "LI" || bound_type == "UI" ||
+        bound_type == "FX";
+    const bool supported_type =
+        requires_value || bound_type == "BV" || bound_type == "FR" ||
+        bound_type == "MI" || bound_type == "PL";
+    if (!supported_type)
+      printf_error_line(m_read_line);
+
+    const bool has_value = read_optional_bound_value(input_bound);
+    if (requires_value != has_value ||
+        (has_value && !std::isfinite(input_bound)))
+      printf_error_line(m_read_line);
+
+    if (selected_bound_name.empty())
+      selected_bound_name = temp_str;
+    if (temp_str != selected_bound_name)
       continue;
+    if (!m_model_manager->exists_var(var_name))
+      printf_error_line(m_read_line);
+
+    const bool sets_lower =
+        bound_type == "LO" || bound_type == "LI" ||
+        bound_type == "FX" || bound_type == "FR" ||
+        bound_type == "MI" || bound_type == "BV";
+    const bool sets_upper =
+        bound_type == "UP" || bound_type == "UI" ||
+        bound_type == "FX" || bound_type == "FR" ||
+        bound_type == "PL" || bound_type == "BV";
+    const bool has_explicit_lower = lower_bound_vars.contains(var_name);
+    if ((sets_lower && has_explicit_lower) ||
+        (sets_upper && upper_bound_vars.contains(var_name)))
+      printf_error_line(m_read_line);
+    if (sets_lower)
+      lower_bound_vars.insert(var_name);
+    if (sets_upper)
+      upper_bound_vars.insert(var_name);
+
+    auto& var = m_model_manager->var(var_name);
+    if (bound_type != "BV" && var.type() == Var_Type::binary)
+    {
+      var.set_type(Var_Type::general_integer);
+      var.set_upper_bound(k_inf);
+    }
+    if (bound_type == "UP")
+    {
+      if (input_bound < 0.0 && !has_explicit_lower)
+        var.set_lower_bound(k_neg_inf);
+      var.set_upper_bound(input_bound);
+    }
+    else if (bound_type == "LO")
+      var.set_lower_bound(input_bound);
+    else if (bound_type == "BV")
+    {
+      var.set_type(Var_Type::binary);
+      var.set_upper_bound(1.0);
+      var.set_lower_bound(0.0);
+    }
+    else if (bound_type == "LI")
+    {
+      if (!is_integral_within_tolerance(input_bound))
+        printf_error_line(m_read_line);
+      if (!var.requires_integrality())
+        var.set_type(Var_Type::general_integer);
+      var.set_lower_bound(input_bound);
+    }
+    else if (bound_type == "UI")
+    {
+      if (!is_integral_within_tolerance(input_bound))
+        printf_error_line(m_read_line);
+      if (!var.requires_integrality())
+        var.set_type(Var_Type::general_integer);
+      if (input_bound < 0.0 && !has_explicit_lower)
+        var.set_lower_bound(k_neg_inf);
+      var.set_upper_bound(input_bound);
+    }
+    else if (bound_type == "FX")
+    {
+      var.set_lower_bound(input_bound);
+      var.set_upper_bound(input_bound);
+      var.set_type(Var_Type::fixed);
+    }
+    else if (bound_type == "FR")
+    {
+      var.set_upper_bound(k_inf);
+      var.set_lower_bound(k_neg_inf);
+    }
+    else if (bound_type == "MI")
+      var.set_lower_bound(k_neg_inf);
+    else if (bound_type == "PL")
+      var.set_upper_bound(k_inf);
   }
   infile.close();
   if (m_small_coeff_counter > 0)

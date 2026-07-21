@@ -1,11 +1,18 @@
-# Local-MIP 项目的 clang-format 配置
 BasedOnStyle: LLVM
 Language: Cpp
-Standard: Cpp11
+Standard: c++20
 AccessModifierOffset: -2
 AlignAfterOpenBracket: Align
-AlignOperands: true
+AlignOperands: Align
 AlignTrailingComments: true
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+IndentCaseLabels: true
+IndentWidth: 2
+IndentWrappedFunctionNames: false
+NamespaceIndentation: None
+TabWidth: 2
+UseTab: Never
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortBlocksOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: false
@@ -16,6 +23,11 @@ AlwaysBreakBeforeMultilineStrings: false
 AlwaysBreakTemplateDeclarations: Yes
 BinPackArguments: false
 BinPackParameters: false
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+ColumnLimit: 75
+BreakBeforeBraces: Allman
 BraceWrapping:
   AfterClass: true
   AfterControlStatement: true
@@ -29,16 +41,10 @@ BraceWrapping:
   SplitEmptyFunction: false
   SplitEmptyRecord: false
   SplitEmptyNamespace: false
-BreakBeforeBinaryOperators: None
-BreakBeforeBraces: Allman
-BreakBeforeTernaryOperators: true
-BreakConstructorInitializersBeforeComma: false
-ColumnLimit: 75
-CommentPragmas: '^ IWYU pragma:'
-ConstructorInitializerIndentWidth: 4
-ContinuationIndentWidth: 4
 Cpp11BracedListStyle: true
 DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Pointer
 IncludeBlocks: Preserve
 IncludeCategories:
   - Regex: '^"'
@@ -47,24 +53,17 @@ IncludeCategories:
     Priority: 1
   - Regex: '.*'
     Priority: 2
-IndentCaseLabels: true
-IndentWidth: 2
-IndentWrappedFunctionNames: false
+SortIncludes: true
+CommentPragmas: '^ IWYU pragma:'
 KeepEmptyLinesAtTheStartOfBlocks: true
 MaxEmptyLinesToKeep: 2
-NamespaceIndentation: None
-PointerAlignment: Left
-ReflowComments: false
-SortIncludes: true
+SpacesBeforeTrailingComments: 1
 SpaceAfterCStyleCast: false
 SpaceBeforeAssignmentOperators: true
 SpaceBeforeParens: ControlStatements
 SpaceInEmptyParentheses: false
-SpacesBeforeTrailingComments: 1
 SpacesInAngles: false
 SpacesInCStyleCastParentheses: false
 SpacesInContainerLiterals: true
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
-TabWidth: 2
-UseTab: Never

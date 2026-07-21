@@ -56,6 +56,8 @@ public:
 
   bool execute(Restart_Ctx& p_ctx) const;
 
+  inline bool has_user_callback() const;
+
 private:
   enum class Strategy
   {
@@ -92,4 +94,9 @@ inline bool Restart::should_restart(Restart_Ctx& p_ctx) const
     return false;
   return p_ctx.m_shared.m_cur_step >
          p_ctx.m_shared.m_last_improve_step + m_restart_step;
+}
+
+inline bool Restart::has_user_callback() const
+{
+  return static_cast<bool>(m_user_cbk);
 }

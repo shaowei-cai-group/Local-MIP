@@ -93,6 +93,10 @@ Format rules:
 - Command line arguments override values from the configuration file
 - See `default.set` for descriptions and valid ranges
 
+### Warm-start domain validation
+
+Warm-start `.sol` files may omit variables. Omitted variables use the solver's zero-start strategy: zero when it is inside the variable bounds, otherwise the nearest bound. Values within `feas_tolerance` of an integer or a variable bound are canonicalized; clearly fractional integer values, non-finite values, and values outside the bounds are rejected. A warm start may violate linear constraints because the local search is responsible for repairing them. Start/restart callbacks and custom moves use the same variable-domain checks.
+
 ### Tests
 CTest targets are defined in `tests/CMakeLists.txt`.
 ```bash

@@ -68,7 +68,8 @@ void Start::set_method(const std::string& p_method_name)
 
 void Start::set_up_start_values(
     Start_Ctx& p_ctx,
-    const std::vector<double>& p_start_solution) const
+    const std::vector<double>& p_start_solution,
+    const std::vector<char>& p_start_mask) const
 {
   if (!p_start_solution.empty())
   {
@@ -79,8 +80,19 @@ void Start::set_up_start_values(
           std::to_string(p_start_solution.size()) +
           " != " + std::to_string(p_ctx.m_var_current_value.size()));
     }
+    if (!p_start_mask.empty() &&
+        p_start_mask.size() != p_start_solution.size())
+    {
+      throw Solver_Error("start solution presence mask size does not "
+                         "match variable count: " +
+                         std::to_string(p_start_mask.size()) +
+                         " != " + std::to_string(p_start_solution.size()));
+    }
+    if (!p_start_mask.empty())
+      zero_start(p_ctx);
     for (size_t var_idx = 0; var_idx < p_start_solution.size(); ++var_idx)
-      p_ctx.m_var_current_value[var_idx] = p_start_solution[var_idx];
+      if (p_start_mask.empty() || p_start_mask[var_idx])
+        p_ctx.m_var_current_value[var_idx] = p_start_solution[var_idx];
   }
   else if (m_user_cbk)
     m_user_cbk(p_ctx, m_user_data);
