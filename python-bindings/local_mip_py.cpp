@@ -379,6 +379,7 @@ PYBIND11_MODULE(localmip_py, m)
       .def("is_binary", &Model_Var::is_binary)
       .def("is_real", &Model_Var::is_real)
       .def("is_general_integer", &Model_Var::is_general_integer)
+      .def("requires_integrality", &Model_Var::requires_integrality)
       .def("pos_in_con", &Model_Var::pos_in_con, py::arg("term_idx"))
       .def("con_idx", &Model_Var::con_idx, py::arg("term_idx"))
       .def("con_idx_set",

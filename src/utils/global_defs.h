@@ -16,6 +16,7 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <stdlib.h>
 #include <sys/time.h>
 
@@ -42,6 +43,30 @@ extern double k_feas_tolerance;
 extern double k_opt_tolerance;
 
 extern double k_zero_tolerance;
+
+inline constexpr double k_max_time_limit = 1e8;
+
+inline constexpr double k_max_feas_tolerance = 1e-2;
+
+inline constexpr double k_max_opt_tolerance = 1.0;
+
+inline constexpr double k_max_zero_tolerance = 1e-3;
+
+inline bool is_integral_within_tolerance(double p_value)
+{
+  return std::isfinite(p_value) &&
+         std::fabs(p_value - std::round(p_value)) <= k_feas_tolerance;
+}
+
+inline bool fits_in_long_long(double p_value)
+{
+  if (!std::isfinite(p_value))
+    return false;
+  const double lower_inclusive =
+      static_cast<double>(std::numeric_limits<long long>::lowest());
+  const double upper_exclusive = -lower_inclusive;
+  return p_value >= lower_inclusive && p_value < upper_exclusive;
+}
 
 enum class Var_Type
 {

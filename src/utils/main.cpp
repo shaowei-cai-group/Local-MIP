@@ -26,11 +26,17 @@
 
 std::atomic<Local_MIP*> g_solver{nullptr};
 
+static_assert(std::atomic<Local_MIP*>::is_always_lock_free,
+              "signal handling requires lock-free pointer atomics");
+static_assert(std::atomic<bool>::is_always_lock_free,
+              "signal handling requires lock-free boolean atomics");
+
 void signal_handler(int p_signal)
 {
+  (void)p_signal;
   Local_MIP* solver = g_solver.load(std::memory_order_acquire);
   if (solver != nullptr)
-    solver->terminate();
+    solver->request_termination();
 }
 
 int main(int argc, char* argv[])

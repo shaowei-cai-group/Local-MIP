@@ -113,6 +113,7 @@ Key symbols:
 - `LocalMIP.enable_model_api()`
 - `LocalMIP.add_var(...)`, `LocalMIP.add_con(...)`
 - `LocalMIP.get_solution()`
+- `ModelVar.requires_integrality()`
 
 ## Notes
 - `pip install ./python-bindings` compiles the Local-MIP core and the extension together inside the wheel build.
@@ -121,3 +122,4 @@ Key symbols:
 - Callback contexts (`Start::Start_Ctx`, etc.) are exposed as structured Python objects with read-only shared sequence views and writable fields where the solver expects mutation.
 - `NeighborCtx.op_size` is derived from `clear_ops()`, `set_single_op(...)`, and `append_op(...)`; update move outputs through those helpers instead of writing the size directly.
 - Python callbacks can optionally receive a Python `user_data` object; if omitted, the old shorter callback signatures still work.
+- Writable start/restart callback values and custom moves are checked for finite values, bounds, and integrality before the solver accepts them.

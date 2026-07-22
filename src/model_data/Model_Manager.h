@@ -84,7 +84,8 @@ public:
 
   ~Model_Manager();
 
-  size_t make_var(const std::string& p_name, const bool p_integrality);
+  size_t make_var(const std::string& p_name,
+                  bool p_requires_integrality);
 
   size_t make_con(const std::string& p_name, const char p_type = '<');
 

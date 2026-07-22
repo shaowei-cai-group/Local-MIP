@@ -181,7 +181,10 @@ double Restart::sample_random_value(Restart_Ctx& p_ctx,
   }
   else if (p_model_var.is_general_integer())
   {
-    if (has_finite_lower && has_finite_upper)
+    const bool can_sample_with_long_long =
+        has_finite_lower && has_finite_upper &&
+        fits_in_long_long(lower) && fits_in_long_long(upper);
+    if (can_sample_with_long_long)
     {
       long long lower_int = static_cast<long long>(std::ceil(lower));
       long long upper_int = static_cast<long long>(std::floor(upper));
@@ -192,11 +195,18 @@ double Restart::sample_random_value(Restart_Ctx& p_ctx,
       value = static_cast<double>(distribution(p_ctx.m_rng));
       return std::clamp(value, lower, upper);
     }
-    else if (p_ctx.m_shared.m_is_found_feasible)
+    if (p_ctx.m_shared.m_is_found_feasible)
       value =
           std::clamp(p_ctx.m_shared.m_var_best_value[p_model_var.idx()],
                      lower,
                      upper);
+    else if (has_finite_lower && has_finite_upper)
+    {
+      if (p_model_var.in_bound(0.0))
+        value = 0.0;
+      else
+        value = lower > 0.0 ? lower : upper;
+    }
     else if (has_finite_lower && !has_finite_upper)
       value = lower;
     else if (!has_finite_lower && has_finite_upper)

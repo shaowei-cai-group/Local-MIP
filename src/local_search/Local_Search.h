@@ -14,8 +14,8 @@
 #pragma once
 #include "../model_data/Model_Con.h"
 #include "../model_data/Model_Manager.h"
-#include "../model_data/Model_Var.h"
 #include "../utils/global_defs.h"
+#include "../utils/solver_error.h"
 #include "context/context.h"
 #include "neighbor/neighbor.h"
 #include "restart/restart.h"
@@ -30,12 +30,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <functional>
 #include <limits>
 #include <random>
 #include <string>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 class Local_Search
@@ -133,7 +131,7 @@ private:
 
   std::atomic<double> m_logged_obj_value;
 
-  bool m_terminated;
+  std::atomic<bool> m_terminated;
 
   std::string m_sol_path;
 
@@ -207,6 +205,11 @@ private:
 
   inline void publish_best_obj();
 
+  void normalize_domain_values(std::vector<double>& p_values,
+                               const char* p_source) const;
+
+  bool verify_domain_values(const std::vector<double>& p_values) const;
+
   bool verify_solution() const;
 
   bool solve_objective_only();
@@ -215,13 +218,21 @@ private:
 
   void refresh_activities();
 
+  double checked_move_value(size_t p_var_idx,
+                            double p_delta,
+                            const char* p_source) const;
+
   inline void reset_op(bool p_require_positive);
 
   bool lift_move();
 
-  void explore_neighbor(std::vector<Neighbor>& p_explore_neighbors);
+  bool explore_neighbor(std::vector<Neighbor>& p_explore_neighbors);
 
   void apply_move(size_t p_var_idx, double p_delta);
+
+  void apply_checked_move(size_t p_var_idx,
+                          double p_delta,
+                          const char* p_source);
 
   void reset_after_restart();
 
@@ -244,7 +255,10 @@ public:
 
   ~Local_Search();
 
-  int run_search(const std::vector<double>& p_start_solution = {});
+  int run_search(const std::vector<double>& p_start_solution = {},
+                 const std::vector<char>& p_start_mask = {});
+
+  bool finalize_result();
 
   void output_result() const;
 
@@ -256,7 +270,7 @@ public:
 
   inline const std::vector<double>& get_solution() const;
 
-  void terminate();
+  void terminate() noexcept;
 
   void set_sol_path(const std::string& p_sol_path);
 
@@ -434,10 +448,11 @@ inline void Local_Search::reset_op(bool p_require_positive)
   m_best_age = SIZE_MAX;
 }
 
-inline void
+inline bool
 Local_Search::explore_neighbor(std::vector<Neighbor>& p_explore_neighbors)
 {
   assert(!p_explore_neighbors.empty());
+  bool validate_selected_move = m_scoring.has_neighbor_callback();
   reset_op(true);
   for (auto& neighbor : p_explore_neighbors)
   {
@@ -450,13 +465,33 @@ Local_Search::explore_neighbor(std::vector<Neighbor>& p_explore_neighbors)
       m_weight.update(m_weight_ctx);
     }
     neighbor.explore(m_neighbor_ctx);
+    const bool user_defined = neighbor.is_user_defined();
+    if (user_defined)
+    {
+      validate_selected_move = true;
+      if (m_op_size > m_op_var_idxs.size() ||
+          m_op_size > m_op_var_deltas.size())
+      {
+        throw Solver_Error(
+            "neighbor callback returned inconsistent operation arrays");
+      }
+    }
+    else
+      assert(m_op_size <= m_op_var_idxs.size() &&
+             m_op_size <= m_op_var_deltas.size());
     for (size_t op_idx = 0; op_idx < m_op_size; ++op_idx)
     {
+      if (user_defined && m_op_var_idxs[op_idx] >= m_var_num)
+      {
+        throw Solver_Error(
+            "neighbor callback variable index is out of range: " +
+            std::to_string(m_op_var_idxs[op_idx]));
+      }
       m_scoring.score_neighbor(
           m_scoring_ctx, m_op_var_idxs[op_idx], m_op_var_deltas[op_idx]);
     }
     if (m_best_neighbor_score > 0)
       break;
   }
-  return;
+  return validate_selected_move;
 }

@@ -68,7 +68,8 @@ void Start::set_method(const std::string& p_method_name)
 
 void Start::set_up_start_values(
     Start_Ctx& p_ctx,
-    const std::vector<double>& p_start_solution) const
+    const std::vector<double>& p_start_solution,
+    const std::vector<char>& p_start_mask) const
 {
   if (!p_start_solution.empty())
   {
@@ -79,8 +80,19 @@ void Start::set_up_start_values(
           std::to_string(p_start_solution.size()) +
           " != " + std::to_string(p_ctx.m_var_current_value.size()));
     }
+    if (!p_start_mask.empty() &&
+        p_start_mask.size() != p_start_solution.size())
+    {
+      throw Solver_Error("start solution presence mask size does not "
+                         "match variable count: " +
+                         std::to_string(p_start_mask.size()) +
+                         " != " + std::to_string(p_start_solution.size()));
+    }
+    if (!p_start_mask.empty())
+      zero_start(p_ctx);
     for (size_t var_idx = 0; var_idx < p_start_solution.size(); ++var_idx)
-      p_ctx.m_var_current_value[var_idx] = p_start_solution[var_idx];
+      if (p_start_mask.empty() || p_start_mask[var_idx])
+        p_ctx.m_var_current_value[var_idx] = p_start_solution[var_idx];
   }
   else if (m_user_cbk)
     m_user_cbk(p_ctx, m_user_data);
@@ -117,12 +129,12 @@ void Start::random_start(Start_Ctx& p_ctx) const
         model_var.is_binary() || model_var.is_general_integer();
     bool has_finite_lower = model_var.lower_bound() > k_neg_inf * 0.5;
     bool has_finite_upper = model_var.upper_bound() < k_inf * 0.5;
-    if (!is_integral_var || !has_finite_lower || !has_finite_upper)
+    if (!is_integral_var || !has_finite_lower || !has_finite_upper ||
+        !fits_in_long_long(model_var.lower_bound()) ||
+        !fits_in_long_long(model_var.upper_bound()))
       continue;
-    long long lower =
-        static_cast<long long>(std::llround(model_var.lower_bound()));
-    long long upper =
-        static_cast<long long>(std::llround(model_var.upper_bound()));
+    long long lower = static_cast<long long>(model_var.lower_bound());
+    long long upper = static_cast<long long>(model_var.upper_bound());
     if (lower > upper)
       std::swap(lower, upper);
     std::uniform_int_distribution<long long> distribution(lower, upper);

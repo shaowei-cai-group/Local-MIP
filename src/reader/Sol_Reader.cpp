@@ -23,9 +23,12 @@
 
 Sol_Read_Result Sol_Reader::read(const std::string& p_sol_file,
                                  const Model_Manager& p_model_manager,
-                                 std::vector<double>& p_solution)
+                                 std::vector<double>& p_solution,
+                                 std::vector<char>* p_loaded_mask)
 {
   p_solution.assign(p_model_manager.var_num(), 0.0);
+  if (p_loaded_mask != nullptr)
+    p_loaded_mask->assign(p_model_manager.var_num(), 0);
 
   std::ifstream input(p_sol_file);
   if (!input.is_open())
@@ -37,7 +40,10 @@ Sol_Read_Result Sol_Reader::read(const std::string& p_sol_file,
   }
 
   const auto& var_name_to_idx = p_model_manager.var_name_to_idx();
-  std::vector<char> seen_var(p_model_manager.var_num(), 0);
+  std::vector<char> local_seen_var(
+      p_loaded_mask == nullptr ? p_model_manager.var_num() : 0, 0);
+  std::vector<char>& seen_var =
+      p_loaded_mask == nullptr ? local_seen_var : *p_loaded_mask;
   size_t loaded_var_num = 0;
   size_t unknown_var_num = 0;
   std::string line;
@@ -98,13 +104,20 @@ Sol_Read_Result Sol_Reader::read(const std::string& p_sol_file,
 
     size_t var_idx = var_iter->second;
     const auto& model_var = p_model_manager.var(var_idx);
-    if (!model_var.in_bound(value))
+    const double input_value = value;
+    if (!model_var.try_normalize_value(value))
     {
       std::ostringstream oss;
-      oss << "value '" << value_text << "' for variable '" << name
-          << "' is out of bounds [" << model_var.lower_bound() << ", "
-          << model_var.upper_bound() << "] in " << p_sol_file << ":"
-          << line_no;
+      oss << "value '" << value_text << "' for variable '" << name << "' ";
+      if (model_var.requires_integrality() &&
+          !is_integral_within_tolerance(input_value))
+        oss << "violates integrality";
+      else if (!model_var.in_bound(input_value))
+        oss << "is out of bounds [" << model_var.lower_bound() << ", "
+            << model_var.upper_bound() << "]";
+      else
+        oss << "is outside its variable domain";
+      oss << " in " << p_sol_file << ":" << line_no;
       return {false, loaded_var_num, unknown_var_num, oss.str()};
     }
 

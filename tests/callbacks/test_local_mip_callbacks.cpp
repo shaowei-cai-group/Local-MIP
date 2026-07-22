@@ -380,6 +380,24 @@ bool test_neighbor_scoring_cbk_invocation()
   return ok;
 }
 
+bool test_neighbor_validation_classification()
+{
+  Neighbor built_in("easy", 1, 1);
+  Neighbor custom(
+      "custom", [](Neighbor::Neighbor_Ctx&, void*) {}, nullptr);
+
+  bool ok = true;
+  ok &= check(!built_in.is_user_defined(),
+              "Built-in neighbors should use the trusted fast path");
+  ok &= check(custom.is_user_defined(),
+              "Custom neighbors should require output validation");
+
+  built_in.set_cbk([](Neighbor::Neighbor_Ctx&, void*) {}, nullptr);
+  ok &= check(built_in.is_user_defined(),
+              "Installing a callback should enable output validation");
+  return ok;
+}
+
 } // namespace
 
 int main()
@@ -392,6 +410,7 @@ int main()
   ok &= test_weight_cbk_invocation();
   ok &= test_lift_scoring_cbk_invocation();
   ok &= test_neighbor_scoring_cbk_invocation();
+  ok &= test_neighbor_validation_classification();
 
   if (!ok)
   {

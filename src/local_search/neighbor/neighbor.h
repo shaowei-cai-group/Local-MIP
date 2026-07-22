@@ -68,6 +68,8 @@ public:
 
   void explore(Neighbor_Ctx& p_ctx);
 
+  inline bool is_user_defined() const;
+
 private:
   enum class Strategy
   {
@@ -133,6 +135,11 @@ private:
   static bool
   tabu_latest(Neighbor_Ctx& p_ctx, size_t p_var_idx, double p_delta);
 };
+
+inline bool Neighbor::is_user_defined() const
+{
+  return m_strategy == Strategy::user_defined;
+}
 
 inline size_t Neighbor::sample_op(size_t p_max_ops,
                                   std::vector<size_t>& p_op_var_idxs,

@@ -47,12 +47,12 @@ Model_Manager::~Model_Manager()
 }
 
 size_t Model_Manager::make_var(const std::string& p_name,
-                               const bool p_integrality)
+                               bool p_requires_integrality)
 {
   auto [iter, inserted] =
       m_var_name_to_idx.try_emplace(p_name, m_var_list.size());
   if (inserted)
-    m_var_list.emplace_back(p_name, iter->second, p_integrality);
+    m_var_list.emplace_back(p_name, iter->second, p_requires_integrality);
   return iter->second;
 }
 
@@ -153,8 +153,7 @@ bool Model_Manager::calculate_vars()
   for (size_t var_idx = 0; var_idx < m_var_num; var_idx++)
   {
     auto& model_var = m_var_list[var_idx];
-    if (model_var.lower_bound() >
-        model_var.upper_bound() + k_feas_tolerance)
+    if (!model_var.try_canonicalize_bounds())
     {
       printf("c infeasible variable bound: %s LB: %.15g; UB: %.15g\n",
              model_var.name().c_str(),

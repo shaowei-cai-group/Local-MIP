@@ -35,8 +35,14 @@ private:
 
   Var_Type m_type;
 
+  bool m_requires_integrality;
+
+  void normalize_integral_bounds();
+
 public:
-  Model_Var(const std::string& p_name, size_t p_idx, bool p_integrality);
+  Model_Var(const std::string& p_name,
+            size_t p_idx,
+            bool p_requires_integrality);
 
   ~Model_Var();
 
@@ -47,6 +53,8 @@ public:
   void set_upper_bound(double p_upper_bound);
 
   void set_lower_bound(double p_lower_bound);
+
+  bool try_canonicalize_bounds();
 
   void set_pos_in_con(const size_t p_term_idx, const size_t p_pos_in_con);
 
@@ -59,6 +67,10 @@ public:
   inline bool is_real() const;
 
   inline bool is_general_integer() const;
+
+  inline bool requires_integrality() const;
+
+  bool try_normalize_value(double& p_value) const;
 
   inline size_t term_num() const;
 
@@ -106,6 +118,11 @@ inline bool Model_Var::is_real() const
 inline bool Model_Var::is_general_integer() const
 {
   return m_type == Var_Type::general_integer;
+}
+
+inline bool Model_Var::requires_integrality() const
+{
+  return m_requires_integrality;
 }
 
 inline size_t Model_Var::term_num() const
