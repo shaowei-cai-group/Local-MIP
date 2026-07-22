@@ -250,11 +250,11 @@ void MPS_Reader::read(const char* p_model_file)
       size_t new_idx = m_model_manager->make_con(new_name, new_symbol);
       auto& new_con = m_model_manager->con(new_idx);
       new_con.set_rhs(new_rhs);
-      for (const auto& [var_idx, coeff] : terms)
+      for (const auto& [var_idx, term_coeff] : terms)
       {
         auto& var = m_model_manager->var(var_idx);
         var.add_con(new_idx, new_con.term_num());
-        new_con.add_var(var_idx, coeff, var.term_num() - 1);
+        new_con.add_var(var_idx, term_coeff, var.term_num() - 1);
       }
     };
     auto apply_range_to_row =
@@ -352,7 +352,7 @@ void MPS_Reader::read(const char* p_model_file)
       printf_error_line(m_read_line);
 
     const bool has_value = read_optional_bound_value(input_bound);
-    if (requires_value != has_value ||
+    if ((requires_value && !has_value) ||
         (has_value && !std::isfinite(input_bound)))
       printf_error_line(m_read_line);
 
@@ -450,6 +450,8 @@ void MPS_Reader::add_coeff_var_to_con(const std::string& p_con_name,
                                       double p_coeff,
                                       const std::string& p_var_name)
 {
+  size_t var_idx =
+      m_model_manager->make_var(p_var_name, m_integrality_marker);
   if (std::fabs(p_coeff) < k_zero_tolerance)
   {
     ++m_small_coeff_counter;
@@ -467,8 +469,6 @@ void MPS_Reader::add_coeff_var_to_con(const std::string& p_con_name,
     con_idx = m_model_manager->con_idx(p_con_name);
     con = &m_model_manager->con(con_idx);
   }
-  size_t var_idx =
-      m_model_manager->make_var(p_var_name, m_integrality_marker);
   auto& var = m_model_manager->var(var_idx);
   var.add_con(con_idx, con->term_num());
   con->add_var(var_idx, p_coeff, var.term_num() - 1);

@@ -23,6 +23,7 @@
 
 bool Local_Search::lift_move()
 {
+  const bool validate_selected_move = m_scoring.has_lift_callback();
   reset_op(true);
   m_strct_feas = true;
   auto& model_obj = m_model_manager->obj();
@@ -41,9 +42,13 @@ bool Local_Search::lift_move()
                          m_var_lift_delta[term_idx]);
   if (m_best_var_idx != SIZE_MAX && m_best_delta != 0)
   {
+    if (validate_selected_move)
+      apply_checked_move(
+          m_best_var_idx, m_best_delta, "selected lift move");
+    else
+      apply_move(m_best_var_idx, m_best_delta);
     size_t obj_term_idx =
         m_model_manager->var_id_to_obj_idx(m_best_var_idx);
-    apply_move(m_best_var_idx, m_best_delta);
     if (obj_term_idx != SIZE_MAX)
       m_var_lift_delta[obj_term_idx] =
           lift_move_operation(obj_term_idx, m_best_var_idx);
@@ -60,11 +65,12 @@ bool Local_Search::lift_move()
     }
     for (auto var_idx : m_feas_touch_vars)
     {
-      size_t obj_term_idx = m_model_manager->var_id_to_obj_idx(var_idx);
-      if (obj_term_idx == SIZE_MAX)
+      size_t touched_obj_term_idx =
+          m_model_manager->var_id_to_obj_idx(var_idx);
+      if (touched_obj_term_idx == SIZE_MAX)
         continue;
-      m_var_lift_delta[obj_term_idx] =
-          lift_move_operation(obj_term_idx, var_idx);
+      m_var_lift_delta[touched_obj_term_idx] =
+          lift_move_operation(touched_obj_term_idx, var_idx);
     }
     return true;
   }
@@ -72,19 +78,25 @@ bool Local_Search::lift_move()
   {
     m_is_keep_feas = false;
     m_strct_feas = false;
-    auto& model_obj = m_model_manager->obj();
+    auto& refreshed_model_obj = m_model_manager->obj();
     for (size_t term_idx = 0; term_idx < m_obj_var_num; ++term_idx)
     {
-      size_t var_idx = model_obj.var_idx(term_idx);
+      size_t var_idx = refreshed_model_obj.var_idx(term_idx);
       double delta = lift_move_operation(term_idx, var_idx);
       m_var_lift_delta[term_idx] = delta;
     }
     for (size_t term_idx = 0; term_idx < m_obj_var_num; ++term_idx)
       m_scoring.score_lift(m_lift_ctx,
-                           model_obj.var_idx(term_idx),
+                           refreshed_model_obj.var_idx(term_idx),
                            m_var_lift_delta[term_idx]);
     if (m_best_var_idx != SIZE_MAX && m_best_delta != 0)
-      apply_move(m_best_var_idx, m_best_delta);
+    {
+      if (validate_selected_move)
+        apply_checked_move(
+            m_best_var_idx, m_best_delta, "selected lift move");
+      else
+        apply_move(m_best_var_idx, m_best_delta);
+    }
     return false;
   }
   m_is_keep_feas = false;

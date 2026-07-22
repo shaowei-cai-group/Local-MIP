@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "global_defs.h"
 #include <cstddef>
 #include <cstring>
 #include <string>
@@ -26,7 +27,7 @@
        false,                                                             \
        10,                                                                \
        0,                                                                 \
-       1e8,                                                               \
+       k_max_time_limit,                                                  \
        "Time limit in seconds")                                           \
   PARA(random_seed,                                                       \
        int,                                                               \
@@ -42,7 +43,7 @@
        false,                                                             \
        1e-6,                                                              \
        0,                                                                 \
-       1e-2,                                                              \
+       k_max_feas_tolerance,                                              \
        "Feasibility tolerance")                                           \
   PARA(opt_tolerance,                                                     \
        double,                                                            \
@@ -50,7 +51,7 @@
        false,                                                             \
        1e-4,                                                              \
        0,                                                                 \
-       1,                                                                 \
+       k_max_opt_tolerance,                                               \
        "Optimality tolerance")                                            \
   PARA(zero_tolerance,                                                    \
        double,                                                            \
@@ -58,7 +59,7 @@
        false,                                                             \
        1e-9,                                                              \
        0,                                                                 \
-       1e-3,                                                              \
+       k_max_zero_tolerance,                                              \
        "Zero value tolerance")                                            \
   PARA(bound_strengthen,                                                  \
        int,                                                               \

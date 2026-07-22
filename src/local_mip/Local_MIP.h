@@ -50,6 +50,8 @@ private:
 
   std::atomic<bool> m_stop_obj_log;
 
+  std::atomic<bool> m_user_termination_requested;
+
   bool m_log_obj_enabled;
 
   std::unique_ptr<Model_Reader> m_reader;
@@ -135,6 +137,8 @@ public:
                                 void* p_user_data = nullptr);
 
   void terminate();
+
+  void request_termination() noexcept;
 
   void set_bms_unsat_con(size_t p_value);
 

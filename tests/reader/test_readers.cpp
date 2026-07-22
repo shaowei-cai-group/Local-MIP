@@ -807,6 +807,27 @@ private:
     std::remove(m_mps_file);
   }
 
+  void check_accepted(const char* p_bound_record, const char* p_message)
+  {
+    if (!write_model(p_bound_record))
+      return;
+
+    bool threw = false;
+    try
+    {
+      Model_Manager manager;
+      MPS_Reader reader(&manager);
+      reader.read(m_mps_file);
+      threw = !manager.process_after_read();
+    }
+    catch (const Solver_Error&)
+    {
+      threw = true;
+    }
+    check(!threw, p_message);
+    std::remove(m_mps_file);
+  }
+
 public:
   Test_MPS_Bound_Value_Syntax()
       : Test_Runner("MPS Bound Value Syntax") {}
@@ -826,15 +847,48 @@ protected:
           "BV without a value should declare a binary variable");
     std::remove(m_mps_file);
 
-    check_rejected("BV BND x 1", "BV should reject a value field");
-    check_rejected("FR BND x 0", "FR should reject a value field");
-    check_rejected("MI BND x 0", "MI should reject a value field");
-    check_rejected("PL BND x 0", "PL should reject a value field");
+    check_accepted("BV BND x 1",
+                   "BV should accept a compatibility value field");
+    check_accepted("FR BND x 0",
+                   "FR should accept a compatibility value field");
+    check_accepted("MI BND x 0",
+                   "MI should accept a compatibility value field");
+    check_accepted("PL BND x 0",
+                   "PL should accept a compatibility value field");
     check_rejected("UP BND x", "UP should require a value field");
     check_rejected("UP BND x 1abc",
                    "A bound value must be a complete number");
     check_rejected("UP BND x 1 extra",
                    "A bound record should reject extra fields");
+
+    const char* zero_column_file = "tmp_mps_zero_column_bound.mps";
+    std::FILE* fp = std::fopen(zero_column_file, "w");
+    if (fp == nullptr)
+    {
+      check(false, "Should create zero-column MPS test file");
+      return;
+    }
+    std::fprintf(fp,
+                 "NAME test\n"
+                 "ROWS\n N OBJ\n"
+                 "COLUMNS\n x OBJ 0\n"
+                 "RHS\n"
+                 "BOUNDS\n FX BND x 2\n"
+                 "ENDATA\n");
+    std::fclose(fp);
+
+    Model_Manager zero_column_manager;
+    MPS_Reader zero_column_reader(&zero_column_manager);
+    zero_column_reader.read(zero_column_file);
+    check(zero_column_manager.exists_var("x"),
+          "A zero-coefficient column should still declare its variable");
+    check_double(zero_column_manager.var("x").lower_bound(),
+                 2.0,
+                 "A bound should apply to a zero-coefficient variable");
+    check_double(zero_column_manager.var("x").upper_bound(),
+                 2.0,
+                 "A fixed bound should apply to a zero-coefficient variable");
+    std::remove(zero_column_file);
   }
 };
 

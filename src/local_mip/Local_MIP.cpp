@@ -45,7 +45,8 @@ Local_MIP::Local_MIP()
     : m_model_file(""), m_param_set_file(""), m_start_sol_path(""),
       m_time_limit(10.0), m_timeout_thread(), m_timeout_mutex(),
       m_timeout_cv(), m_cancel_timeout(true), m_obj_log_thread(),
-      m_stop_obj_log(true), m_log_obj_enabled(true), m_reader(nullptr),
+      m_stop_obj_log(true), m_user_termination_requested(false),
+      m_log_obj_enabled(true), m_reader(nullptr),
       m_model_manager(std::make_unique<Model_Manager>()),
       m_local_search(
           std::make_unique<Local_Search>(m_model_manager.get())),
@@ -75,7 +76,8 @@ void Local_MIP::set_param_set_file(const std::string& p_param_set_file)
   Paras params;
   params.load_from_file(p_param_set_file, false);
 
-  if (params.has_loaded_param("time_limit") && params.time_limit <= 0.0)
+  if (params.has_loaded_param("time_limit") &&
+      (!std::isfinite(params.time_limit) || params.time_limit <= 0.0))
     throw std::invalid_argument("time limit must be positive");
 
   if (params.has_loaded_param("model_file"))
@@ -142,8 +144,12 @@ void Local_MIP::set_param_set_file(const std::string& p_param_set_file)
 
 void Local_MIP::set_time_limit(double p_time_limit)
 {
-  if (p_time_limit <= 0.0)
-    throw std::invalid_argument("time limit must be positive");
+  if (!std::isfinite(p_time_limit) || p_time_limit <= 0.0 ||
+      p_time_limit > k_max_time_limit)
+  {
+    throw std::invalid_argument(
+        "time limit must be finite and in (0, 1e8]");
+  }
   m_time_limit = p_time_limit;
   printf("c time limit is set to : %.2lf seconds\n", m_time_limit);
 }
@@ -190,18 +196,36 @@ void Local_MIP::set_random_seed(uint32_t p_seed)
 
 void Local_MIP::set_feas_tolerance(double p_value)
 {
+  if (!std::isfinite(p_value) || p_value < 0.0 ||
+      p_value > k_max_feas_tolerance)
+  {
+    throw std::invalid_argument(
+        "feasibility tolerance must be finite and in [0, 1e-2]");
+  }
   k_feas_tolerance = p_value;
   printf("c feasibility tolerance is set to : %.10g\n", p_value);
 }
 
 void Local_MIP::set_opt_tolerance(double p_value)
 {
+  if (!std::isfinite(p_value) || p_value < 0.0 ||
+      p_value > k_max_opt_tolerance)
+  {
+    throw std::invalid_argument(
+        "optimality tolerance must be finite and in [0, 1]");
+  }
   k_opt_tolerance = p_value;
   printf("c optimality tolerance is set to : %.10g\n", p_value);
 }
 
 void Local_MIP::set_zero_tolerance(double p_value)
 {
+  if (!std::isfinite(p_value) || p_value < 0.0 ||
+      p_value > k_max_zero_tolerance)
+  {
+    throw std::invalid_argument(
+        "zero tolerance must be finite and in [0, 1e-3]");
+  }
   k_zero_tolerance = p_value;
   printf("c zero value tolerance is set to : %.10g\n", p_value);
 }
@@ -376,6 +400,8 @@ void Local_MIP::set_activity_period(size_t p_value)
 
 void Local_MIP::set_tabu_variation(size_t p_value)
 {
+  if (p_value == 0)
+    throw std::invalid_argument("tabu variation must be at least 1");
   m_local_search->set_tabu_variation(p_value);
   printf("c tabu tenure variation : %zu\n", p_value);
 }
@@ -422,7 +448,10 @@ void Local_MIP::run()
   }
 
   g_clk_start = std::chrono::steady_clock::now();
-  m_cancel_timeout = false;
+  {
+    std::lock_guard<std::mutex> lock(m_timeout_mutex);
+    m_cancel_timeout = false;
+  }
   auto stop_background_tasks = [this]()
   {
     stop_obj_logger();
@@ -442,6 +471,11 @@ void Local_MIP::run()
     throw;
   }
   stop_background_tasks();
+  if (m_user_termination_requested.load(std::memory_order_relaxed))
+  {
+    printf("c [%10.2lf] local search is terminated by user.\n",
+           elapsed_time());
+  }
   if (m_local_search->finalize_result())
     m_local_search->output_result();
   else
@@ -451,11 +485,14 @@ void Local_MIP::run()
 
 void Local_MIP::terminate()
 {
-  m_local_search->terminate();
-  stop_obj_logger();
+  request_termination();
   request_timeout_stop();
-  printf("c [%10.2lf] local search is terminated by user.\n",
-         elapsed_time());
+}
+
+void Local_MIP::request_termination() noexcept
+{
+  m_user_termination_requested.store(true, std::memory_order_relaxed);
+  m_local_search->terminate();
 }
 
 void Local_MIP::timeout_handler()

@@ -105,6 +105,10 @@ public:
                       size_t p_var_idx,
                       double p_delta) const;
 
+  inline bool has_lift_callback() const;
+
+  inline bool has_neighbor_callback() const;
+
 private:
   Lift_Cbk m_lift_cbk;
 
@@ -143,3 +147,13 @@ private:
                     size_t p_var_idx,
                     double p_delta) const;
 };
+
+inline bool Scoring::has_lift_callback() const
+{
+  return static_cast<bool>(m_lift_cbk);
+}
+
+inline bool Scoring::has_neighbor_callback() const
+{
+  return static_cast<bool>(m_neighbor_cbk);
+}

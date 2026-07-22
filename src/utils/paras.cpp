@@ -15,6 +15,7 @@
 #include "global_defs.h"
 #include "paras.h"
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -168,6 +169,24 @@ void Paras::parse_args(int argc, char* argv[])
 
   validate_required();
 
+  if (!std::isfinite(time_limit) || time_limit <= 0.0)
+    report_parameter_error("time_limit must be finite and positive", true);
+  if (!std::isfinite(feas_tolerance) || feas_tolerance < 0.0)
+  {
+    report_parameter_error(
+        "feas_tolerance must be finite and non-negative", true);
+  }
+  if (!std::isfinite(opt_tolerance) || opt_tolerance < 0.0)
+  {
+    report_parameter_error(
+        "opt_tolerance must be finite and non-negative", true);
+  }
+  if (!std::isfinite(zero_tolerance) || zero_tolerance < 0.0)
+  {
+    report_parameter_error(
+        "zero_tolerance must be finite and non-negative", true);
+  }
+
   k_feas_tolerance = feas_tolerance;
   k_opt_tolerance = opt_tolerance;
   k_zero_tolerance = zero_tolerance;
@@ -266,9 +285,12 @@ bool Paras::set_param_from_string(const std::string& name,
     if (!strcmp(#T, "int"))                                               \
     {                                                                     \
       long long parsed_value = 0;                                         \
+      size_t parsed_chars = 0;                                            \
       try                                                                 \
       {                                                                   \
-        parsed_value = std::stoll(value);                                 \
+        parsed_value = std::stoll(value, &parsed_chars);                  \
+        if (parsed_chars != value.size())                                 \
+          throw std::invalid_argument("trailing characters");            \
       }                                                                   \
       catch (const std::exception&)                                       \
       {                                                                   \
@@ -289,16 +311,20 @@ bool Paras::set_param_from_string(const std::string& name,
     else                                                                  \
     {                                                                     \
       double parsed_value = 0.0;                                          \
+      size_t parsed_chars = 0;                                            \
       try                                                                 \
       {                                                                   \
-        parsed_value = std::stod(value);                                  \
+        parsed_value = std::stod(value, &parsed_chars);                   \
+        if (parsed_chars != value.size())                                 \
+          throw std::invalid_argument("trailing characters");            \
       }                                                                   \
       catch (const std::exception&)                                       \
       {                                                                   \
         report_error("invalid floating value '" + value +                 \
                      "' for parameter '" + name + "'");                   \
       }                                                                   \
-      if (parsed_value < static_cast<double>(L) ||                        \
+      if (!std::isfinite(parsed_value) ||                                 \
+          parsed_value < static_cast<double>(L) ||                        \
           parsed_value > static_cast<double>(H))                          \
       {                                                                   \
         std::ostringstream oss;                                           \

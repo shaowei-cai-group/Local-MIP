@@ -42,7 +42,7 @@ int Local_Search::run_search(const std::vector<double>& p_start_solution,
   normalize_domain_values(m_var_current_value, "initial solution");
   init_state();
 
-  while (!m_terminated)
+  while (!m_terminated.load(std::memory_order_relaxed))
   {
     if (m_restart.execute(m_restart_ctx))
     {
@@ -73,8 +73,13 @@ int Local_Search::run_search(const std::vector<double>& p_start_solution,
       if (lift_move_successful)
         continue;
     }
-    explore_neighbor(m_explore_neighbor_list);
-    apply_move(m_best_var_idx, m_best_delta);
+    const bool validate_selected_move =
+        explore_neighbor(m_explore_neighbor_list);
+    if (validate_selected_move)
+      apply_checked_move(
+          m_best_var_idx, m_best_delta, "selected neighbor move");
+    else
+      apply_move(m_best_var_idx, m_best_delta);
     m_is_keep_feas = false;
     ++m_cur_step;
   }
@@ -176,14 +181,16 @@ void Local_Search::apply_move(size_t p_var_idx, double p_delta)
 {
   if (p_var_idx == SIZE_MAX || p_delta == 0)
     return;
-  const double new_value =
-      checked_move_value(p_var_idx, p_delta, "selected move");
-  const double old_value = m_var_current_value[p_var_idx];
-  p_delta = new_value - old_value;
-  if (p_delta == 0)
-    return;
+  assert(p_var_idx < m_var_num);
   auto& model_var = m_model_manager->var(p_var_idx);
-  m_var_current_value[p_var_idx] = new_value;
+  if (!model_var.in_bound(m_var_current_value[p_var_idx] + p_delta))
+  {
+    p_delta = std::clamp(
+        p_delta,
+        model_var.lower_bound() - m_var_current_value[p_var_idx],
+        model_var.upper_bound() - m_var_current_value[p_var_idx]);
+  }
+  m_var_current_value[p_var_idx] += p_delta;
   for (size_t term_idx = 0; term_idx < model_var.term_num(); ++term_idx)
   {
     size_t con_idx = model_var.con_idx(term_idx);
@@ -267,21 +274,16 @@ double Local_Search::checked_move_value(size_t p_var_idx,
   return new_value;
 }
 
-void Local_Search::validate_neighbor_operations()
+void Local_Search::apply_checked_move(size_t p_var_idx,
+                                      double p_delta,
+                                      const char* p_source)
 {
-  if (m_op_size > m_op_var_idxs.size() ||
-      m_op_size > m_op_var_deltas.size())
-  {
-    throw Solver_Error(
-        "neighbor callback returned inconsistent operation arrays");
-  }
-  for (size_t op_idx = 0; op_idx < m_op_size; ++op_idx)
-  {
-    const size_t var_idx = m_op_var_idxs[op_idx];
-    const double new_value = checked_move_value(
-        var_idx, m_op_var_deltas[op_idx], "neighbor move");
-    m_op_var_deltas[op_idx] = new_value - m_var_current_value[var_idx];
-  }
+  if (p_var_idx == SIZE_MAX || p_delta == 0)
+    return;
+  const double new_value =
+      checked_move_value(p_var_idx, p_delta, p_source);
+  const double old_value = m_var_current_value[p_var_idx];
+  apply_move(p_var_idx, new_value - old_value);
 }
 
 bool Local_Search::verify_solution() const
@@ -401,15 +403,14 @@ void Local_Search::init_data()
   m_con_activity.resize(m_con_num, 0.0);
   for (size_t con_idx = 1; con_idx < m_con_num; con_idx++)
     m_con_constant[con_idx] = m_model_manager->con(con_idx).rhs();
-  auto& model_obj = m_model_manager->obj();
   if (m_explore_neighbor_list.empty())
   {
     m_explore_neighbor_list = {
         Neighbor("unsat_mtm_bm", m_bms_unsat_con, m_bms_mtm_unsat_op),
         Neighbor("sat_mtm", m_bms_sat_con, m_bms_mtm_sat_op),
-        Neighbor("flip", -1, m_bms_flip_op),
-        Neighbor("easy", -1, m_bms_easy_op),
-        Neighbor("unsat_mtm_bm_random", -1, m_bms_random_op)};
+        Neighbor("flip", SIZE_MAX, m_bms_flip_op),
+        Neighbor("easy", SIZE_MAX, m_bms_easy_op),
+        Neighbor("unsat_mtm_bm_random", SIZE_MAX, m_bms_random_op)};
   }
 }
 
@@ -638,9 +639,9 @@ Local_Search::Local_Search(const Model_Manager* p_model_manager)
 Local_Search::~Local_Search()
 {
 }
-void Local_Search::terminate()
+void Local_Search::terminate() noexcept
 {
-  m_terminated = true;
+  m_terminated.store(true, std::memory_order_relaxed);
 }
 
 void Local_Search::set_sol_path(const std::string& p_sol_path)
@@ -787,9 +788,9 @@ void Local_Search::reset_default_neighbor_list()
   m_explore_neighbor_list = {
       Neighbor("unsat_mtm_bm", m_bms_unsat_con, m_bms_mtm_unsat_op),
       Neighbor("sat_mtm", m_bms_sat_con, m_bms_mtm_sat_op),
-      Neighbor("flip", -1, m_bms_flip_op),
-      Neighbor("easy", -1, m_bms_easy_op),
-      Neighbor("unsat_mtm_bm_random", -1, m_bms_random_op)};
+      Neighbor("flip", SIZE_MAX, m_bms_flip_op),
+      Neighbor("easy", SIZE_MAX, m_bms_easy_op),
+      Neighbor("unsat_mtm_bm_random", SIZE_MAX, m_bms_random_op)};
 }
 
 void Local_Search::set_tabu_base(size_t p_value)
