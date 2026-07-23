@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 class MPS_Reader : public Model_Reader
 {
@@ -32,6 +33,10 @@ private:
   bool m_integrality_marker;
 
   size_t m_small_coeff_counter;
+
+  std::unordered_set<std::string> m_ignored_free_rows;
+
+  inline size_t record_data_size(const std::string& p_record) const;
 
   inline void iss_setup();
 
@@ -58,14 +63,31 @@ public:
 inline void MPS_Reader::iss_setup()
 {
   m_iss.clear();
-  m_iss.str(m_read_line);
+  const size_t data_size = record_data_size(m_read_line);
+  if (data_size == m_read_line.size())
+    m_iss.str(m_read_line);
+  else
+    m_iss.str(m_read_line.substr(0, data_size));
   m_iss.seekg(0, std::ios::beg);
 }
 
-inline bool MPS_Reader::is_blank(const std::string& a) const
+inline size_t
+MPS_Reader::record_data_size(const std::string& p_record) const
 {
-  for (const char *p = a.data(), *end = p + a.size(); p != end; ++p)
-    if (!std::isspace(static_cast<unsigned char>(*p)))
+  for (size_t idx = 1; idx < p_record.size(); ++idx)
+  {
+    if (p_record[idx] == '$' &&
+        std::isspace(static_cast<unsigned char>(p_record[idx - 1])))
+      return idx;
+  }
+  return p_record.size();
+}
+
+inline bool MPS_Reader::is_blank(const std::string& p_record) const
+{
+  const size_t data_size = record_data_size(p_record);
+  for (size_t idx = 0; idx < data_size; ++idx)
+    if (!std::isspace(static_cast<unsigned char>(p_record[idx])))
       return false;
   return true;
 }

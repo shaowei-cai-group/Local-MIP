@@ -892,6 +892,211 @@ protected:
   }
 };
 
+class Test_MPS_Free_Row_Semantics : public Test_Runner
+{
+private:
+  bool write_model(const char* p_path, const char* p_contents)
+  {
+    std::FILE* fp = std::fopen(p_path, "w");
+    if (fp == nullptr)
+    {
+      check(false, "Should create MPS free-row test file");
+      return false;
+    }
+    std::fputs(p_contents, fp);
+    std::fclose(fp);
+    return true;
+  }
+
+public:
+  Test_MPS_Free_Row_Semantics()
+      : Test_Runner("MPS Free Row Semantics") {}
+
+protected:
+  void execute() override
+  {
+    const char* free_row_file = "tmp_mps_free_rows.mps";
+    if (!write_model(free_row_file,
+                     "NAME free-rows $ model comment\r\n"
+                     "ROWS\r\n"
+                     " $ comment-only data record\r\n"
+                     " N OBJ $ objective comment\r\n"
+                     " N FREE $ ignored row comment\r\n"
+                     " E s0        $t114                0\r\n"
+                     " L C\r\n"
+                     "COLUMNS\r\n"
+                     " x OBJ 2 FREE 99\r\n"
+                     " y FREE 7 $ ignored coefficient comment\r\n"
+                     " z$1 C 1 $ active coefficient comment\r\n"
+                     " w s0 1 $ commented equality coefficient\r\n"
+                     "RHS\r\n"
+                     " RHS1 FREE 123 C 5 $ RHS comment\r\n"
+                     " RHS1 s0 0 $ commented equality RHS\r\n"
+                     "RANGES\r\n"
+                     " RNG1 FREE 9 C 2 $ range comment\r\n"
+                     "BOUNDS\r\n"
+                     " FX BND y 3 $ bound comment\r\n"
+                     "ENDATA\r\n"))
+      return;
+
+    Model_Manager manager;
+    MPS_Reader reader(&manager);
+    reader.read(free_row_file);
+
+    check(manager.get_obj_name() == "OBJ",
+          "The first N row should be the objective by default");
+    check(reader.m_ignored_free_rows.size() == 1 &&
+              reader.m_ignored_free_rows.contains("FREE"),
+          "Later N rows should be recorded as ignored free rows");
+    check(manager.obj().term_num() == 1,
+          "Ignored free-row coefficients must not enter the objective");
+    check(manager.var(manager.obj().var_idx(0)).name() == "x",
+          "The selected objective should retain its coefficient variable");
+    check_double(manager.obj().coeff(0),
+                 2.0,
+                 "The first N row coefficient should define the objective");
+    check_double(manager.obj().rhs(),
+                 0.0,
+                 "An ignored free-row RHS must not change objective offset");
+    check(manager.exists_var("y"),
+          "A column used only by an ignored free row should declare a variable");
+    check(manager.var("y").term_num() == 0,
+          "Ignored free-row coefficients must not create matrix entries");
+    check_double(manager.var("y").lower_bound(),
+                 3.0,
+                 "Bounds should apply to variables declared by ignored rows");
+    check_double(manager.var("y").upper_bound(),
+                 3.0,
+                 "Fixed bounds should apply to ignored-row-only variables");
+    check(manager.exists_var("z$1"),
+          "A dollar sign inside a name must not start an inline comment");
+    check(manager.con("s0").is_equality(),
+          "A ROWS record with a dollar-sign comment should be retained");
+    check_double(manager.con("C").rhs(),
+                 5.0,
+                 "Active RHS entries should still be parsed");
+    check_double(manager.con("C_range_0").rhs(),
+                 3.0,
+                 "Active range entries should still be parsed");
+    check(manager.m_con_name_to_idx.find("FREE") ==
+              manager.m_con_name_to_idx.end(),
+          "Ignored free rows must not be added as constraints");
+    std::remove(free_row_file);
+
+    const char* objname_file = "tmp_mps_objname.mps";
+    if (!write_model(objname_file,
+                     "NAME objname\n"
+                     "OBJSENSE MAX $ objective sense comment\n"
+                     "OBJNAME $ selected objective follows\n"
+                     " OBJ2 $ selected objective comment\n"
+                     "ROWS\n"
+                     " N OBJ1\n"
+                     " N OBJ2\n"
+                     " L C\n"
+                     "COLUMNS\n"
+                     " x OBJ1 11 OBJ2 3\n"
+                     " y OBJ2 4 C 1\n"
+                     "RHS\n"
+                     " RHS1 OBJ1 100 OBJ2 7\n"
+                     "BOUNDS\n"
+                     "ENDATA\n"))
+      return;
+
+    Model_Manager objname_manager;
+    MPS_Reader objname_reader(&objname_manager);
+    objname_reader.read(objname_file);
+    check(objname_manager.get_obj_name() == "OBJ2",
+          "OBJNAME should override the first N row");
+    check(objname_manager.is_min() == -1,
+          "Inline OBJSENSE MAX should remain supported with OBJNAME");
+    check(objname_reader.m_ignored_free_rows.contains("OBJ1"),
+          "An earlier N row should be ignored when OBJNAME selects a later row");
+    check(objname_manager.obj().term_num() == 2,
+          "Only coefficients of the OBJNAME-selected row should be retained");
+    std::unordered_map<std::string, double> obj_coeffs;
+    for (size_t term_idx = 0;
+         term_idx < objname_manager.obj().term_num();
+         ++term_idx)
+    {
+      obj_coeffs[objname_manager.var(
+                     objname_manager.obj().var_idx(term_idx)).name()] =
+          objname_manager.obj().coeff(term_idx);
+    }
+    check_double(obj_coeffs["x"],
+                 3.0,
+                 "OBJNAME should select the requested objective coefficient");
+    check_double(obj_coeffs["y"],
+                 4.0,
+                 "OBJNAME should retain all selected objective terms");
+    check_double(objname_manager.obj().rhs(),
+                 7.0,
+                 "RHS on the selected objective should define its constant");
+    check(objname_manager.m_con_name_to_idx.find("OBJ1") ==
+              objname_manager.m_con_name_to_idx.end(),
+          "An ignored objective candidate must not pollute the constraint map");
+    check(objname_manager.m_con_name_to_idx.find("OBJ2") ==
+              objname_manager.m_con_name_to_idx.end(),
+          "The objective name must not pollute the constraint map");
+    std::remove(objname_file);
+
+    const char* invalid_objname_file = "tmp_mps_invalid_objname.mps";
+    if (!write_model(invalid_objname_file,
+                     "NAME bad-objname\n"
+                     "OBJNAME MISSING\n"
+                     "ROWS\n N OBJ\n L C\n"
+                     "COLUMNS\n x OBJ 1 C 1\n"
+                     "RHS\n RHS1 C 1\n"
+                     "BOUNDS\n"
+                     "ENDATA\n"))
+      return;
+
+    bool invalid_objname_threw = false;
+    try
+    {
+      Model_Manager invalid_manager;
+      MPS_Reader invalid_reader(&invalid_manager);
+      invalid_reader.read(invalid_objname_file);
+    }
+    catch (const Solver_Error& error)
+    {
+      invalid_objname_threw =
+          std::string(error.what()).find("OBJNAME row is not an N row") !=
+          std::string::npos;
+    }
+    check(invalid_objname_threw,
+          "OBJNAME should reject names that are not declared as N rows");
+    std::remove(invalid_objname_file);
+
+    const char* nonstandard_row_file = "tmp_mps_nonstandard_n_row.mps";
+    if (!write_model(nonstandard_row_file,
+                     "NAME nonstandard-n-row\n"
+                     "ROWS\n"
+                     " N OBJ0 2 1 0 0\n"
+                     "COLUMNS\n x OBJ0 1\n"
+                     "RHS\n"
+                     "BOUNDS\n"
+                     "ENDATA\n"))
+      return;
+
+    bool nonstandard_row_threw = false;
+    try
+    {
+      Model_Manager nonstandard_manager;
+      MPS_Reader nonstandard_reader(&nonstandard_manager);
+      nonstandard_reader.read(nonstandard_row_file);
+    }
+    catch (const Solver_Error& error)
+    {
+      nonstandard_row_threw =
+          std::string(error.what()).find("c error line:") !=
+          std::string::npos;
+    }
+    check(nonstandard_row_threw,
+          "N rows with extra fields should be rejected as invalid MPS");
+    std::remove(nonstandard_row_file);
+  }
+};
+
 } // namespace
 
 int main()
@@ -915,6 +1120,7 @@ int main()
   suite.add_test(new Test_MPS_Integer_Bound_Types());
   suite.add_test(new Test_MPS_Bound_Semantics());
   suite.add_test(new Test_MPS_Bound_Value_Syntax());
+  suite.add_test(new Test_MPS_Free_Row_Semantics());
 
   bool ok = suite.run_all();
 
