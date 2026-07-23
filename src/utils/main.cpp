@@ -47,6 +47,7 @@ int main(int argc, char* argv[])
   INIT_ARGS;
   std::signal(SIGINT, signal_handler);
   std::signal(SIGTERM, signal_handler);
+  std::unique_ptr<Local_MIP> solver;
   try
   {
     std::string model_file = OPT(model_file);
@@ -78,7 +79,7 @@ int main(int argc, char* argv[])
     int activity_period = OPT(activity_period);
     int break_eq_feas = OPT(break_eq_feas);
     int split_eq = OPT(split_eq);
-    std::unique_ptr<Local_MIP> solver = std::make_unique<Local_MIP>();
+    solver = std::make_unique<Local_MIP>();
     g_solver.store(solver.get(), std::memory_order_release);
     solver->set_model_file(model_file);
     if (time_limit != 10.0)
