@@ -90,7 +90,7 @@
        int,                                                               \
        'u',                                                               \
        false,                                                             \
-       12,                                                                \
+       10,                                                                \
        0,                                                                 \
        100000000,                                                         \
        "BMS unsatisfied constraint sample size")                          \

@@ -577,7 +577,7 @@ Local_Search::Local_Search(const Model_Manager* p_model_manager)
       m_activity_hits(0), m_cur_step(0), m_tabu_base(4),
       m_tabu_variation(7), m_is_found_feasible(false),
       m_current_obj_breakthrough(false), m_last_improve_step(0),
-      m_bms_unsat_con(12), m_bms_mtm_unsat_op(2250), m_bms_sat_con(1),
+      m_bms_unsat_con(10), m_bms_mtm_unsat_op(2250), m_bms_sat_con(1),
       m_bms_mtm_sat_op(80), m_bms_flip_op(0), m_bms_easy_op(5),
       m_bms_random_op(250), m_best_obj(k_inf),
       m_logged_obj_value(std::numeric_limits<double>::quiet_NaN()),

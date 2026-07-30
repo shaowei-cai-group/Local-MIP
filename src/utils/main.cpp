@@ -110,7 +110,7 @@ int main(int argc, char* argv[])
       solver->set_restart_step(restart_step);
     if (smooth_prob != 1)
       solver->set_weight_smooth_probability(smooth_prob);
-    if (bms_unsat_con != 12)
+    if (bms_unsat_con != 10)
       solver->set_bms_unsat_con(static_cast<size_t>(bms_unsat_con));
     if (bms_unsat_ops != 2250)
       solver->set_bms_mtm_unsat_op(static_cast<size_t>(bms_unsat_ops));
