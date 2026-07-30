@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <random>
 #include <string>
 #include <unordered_set>
@@ -102,6 +103,50 @@ struct Test_Shared_Data
   std::vector<size_t> non_fixed_var_idxs;
   Readonly_Ctx view;
 };
+
+long score_single_constraint_move(const char* p_method,
+                                  char p_constraint_type,
+                                  double p_delta)
+{
+  Model_Manager manager;
+  manager.make_con("");
+  const size_t var_idx = manager.make_var("x", false);
+  const size_t con_idx = manager.make_con("c", p_constraint_type);
+  Model_Var& var = manager.var(var_idx);
+  Model_Con& con = manager.con(con_idx);
+  var.add_con(con_idx, con.term_num());
+  con.add_var(var_idx, 1.0, var.term_num() - 1);
+
+  Test_Shared_Data shared(manager);
+  shared.con_activity = {0.0, 2.0};
+  shared.con_constant = {0.0, 0.0};
+  shared.con_is_equality = std::vector<bool>(2, false);
+  shared.con_is_equality[1] = p_constraint_type == '=';
+  shared.con_weight = {1, 1};
+  shared.var_last_dec_step = {0};
+  shared.var_last_inc_step = {0};
+
+  std::vector<uint32_t> binary_op_stamp(1, 0);
+  uint32_t binary_op_stamp_token = 1;
+  long best_neighbor_score = std::numeric_limits<long>::min();
+  long best_neighbor_subscore = std::numeric_limits<long>::min();
+  size_t best_age = std::numeric_limits<size_t>::max();
+  size_t best_var_idx = std::numeric_limits<size_t>::max();
+  double best_delta = 0.0;
+  Scoring::Neighbor_Ctx ctx(shared.view,
+                            binary_op_stamp,
+                            binary_op_stamp_token,
+                            best_neighbor_score,
+                            best_neighbor_subscore,
+                            best_age,
+                            best_var_idx,
+                            best_delta);
+
+  Scoring scoring;
+  scoring.set_neighbor_method(p_method);
+  scoring.score_neighbor(ctx, var_idx, p_delta);
+  return best_neighbor_score;
+}
 
 // Test feasible scoring: lift_age method
 class Test_Feas_Scoring_Lift_Age : public Test_Runner
@@ -194,6 +239,45 @@ protected:
   }
 };
 
+class Test_Half_Progress_Scoring : public Test_Runner
+{
+public:
+  Test_Half_Progress_Scoring()
+      : Test_Runner("Infeas Scoring: preserve half progress")
+  {
+  }
+
+protected:
+  void execute() override
+  {
+    const long bonus_half =
+        score_single_constraint_move("progress_bonus", '<', -1.0);
+    const long age_half =
+        score_single_constraint_move("progress_age", '<', -1.0);
+    const long full =
+        score_single_constraint_move("progress_bonus", '<', -2.0);
+    const long negative_half =
+        score_single_constraint_move("progress_bonus", '<', 1.0);
+    const long equality_partial =
+        score_single_constraint_move("progress_bonus", '=', -1.0);
+    const long equality_full =
+        score_single_constraint_move("progress_age", '=', -2.0);
+
+    check(bonus_half == 1,
+          "progress_bonus should retain half progress at weight one");
+    check(age_half == 1,
+          "progress_age should retain half progress at weight one");
+    check(full == 2,
+          "full progress should remain twice the half-progress score");
+    check(negative_half == -1,
+          "negative half progress should preserve its sign");
+    check(equality_partial == 2,
+          "equality partial progress should retain its original weight");
+    check(equality_full == 4,
+          "equality full progress should remain twice partial progress");
+  }
+};
+
 // Test scoring method switching
 class Test_Scoring_Method_Switch : public Test_Runner
 {
@@ -275,6 +359,7 @@ int main()
   suite.add_test(new Test_Feas_Scoring_Lift_Random());
   suite.add_test(new Test_Infeas_Scoring_Progress_Bonus());
   suite.add_test(new Test_Infeas_Scoring_Progress_Age());
+  suite.add_test(new Test_Half_Progress_Scoring());
   suite.add_test(new Test_Scoring_Method_Switch());
   suite.add_test(new Test_Scoring_Cbk_Priority());
 

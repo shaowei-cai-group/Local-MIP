@@ -110,16 +110,19 @@ void Scoring::progress_bonus(Neighbor_Ctx& p_ctx,
     size_t con_idx = model_var.con_idx(term_idx);
     size_t pos_in_con = model_var.pos_in_con(term_idx);
     auto& model_con = p_ctx.m_shared.m_model_manager.con(con_idx);
+    const long con_weight =
+        static_cast<long>(p_ctx.m_shared.m_con_weight[con_idx]);
+    const long scaled_con_weight = con_weight * 2;
     if (con_idx == 0 && p_ctx.m_shared.m_is_found_feasible)
     {
       double new_obj = p_ctx.m_shared.m_con_activity[con_idx] +
                        model_con.coeff(pos_in_con) * p_delta;
       if (new_obj < p_ctx.m_shared.m_con_activity[con_idx])
-        neighbor_score += p_ctx.m_shared.m_con_weight[con_idx];
+        neighbor_score += scaled_con_weight;
       else
-        neighbor_score -= p_ctx.m_shared.m_con_weight[con_idx];
+        neighbor_score -= scaled_con_weight;
       if (new_obj < p_ctx.m_shared.m_best_obj)
-        bonus_score += p_ctx.m_shared.m_con_weight[con_idx];
+        bonus_score += con_weight;
     }
     else
     {
@@ -135,15 +138,15 @@ void Scoring::progress_bonus(Neighbor_Ctx& p_ctx,
         pre_sat = std::fabs(pre_gap) <= k_feas_tolerance;
         bool now_sat = std::fabs(new_gap) <= k_feas_tolerance;
         if (!pre_sat && now_sat)
-          neighbor_score += p_ctx.m_shared.m_con_weight[con_idx] * 2;
+          neighbor_score += scaled_con_weight * 2;
         else if (pre_sat && !now_sat)
-          neighbor_score -= p_ctx.m_shared.m_con_weight[con_idx] * 2;
+          neighbor_score -= scaled_con_weight * 2;
         else if (!pre_sat && !now_sat)
         {
           if (std::fabs(new_gap) < std::fabs(pre_gap))
-            neighbor_score += p_ctx.m_shared.m_con_weight[con_idx];
+            neighbor_score += scaled_con_weight;
           else
-            neighbor_score -= p_ctx.m_shared.m_con_weight[con_idx];
+            neighbor_score -= scaled_con_weight;
         }
       }
       else
@@ -151,15 +154,15 @@ void Scoring::progress_bonus(Neighbor_Ctx& p_ctx,
         pre_sat = pre_gap <= k_feas_tolerance;
         bool now_sat = new_gap <= k_feas_tolerance;
         if (!pre_sat && now_sat)
-          neighbor_score += p_ctx.m_shared.m_con_weight[con_idx];
+          neighbor_score += scaled_con_weight;
         else if (pre_sat && !now_sat)
-          neighbor_score -= p_ctx.m_shared.m_con_weight[con_idx];
+          neighbor_score -= scaled_con_weight;
         else if (!pre_sat && !now_sat)
         {
           if (new_gap < pre_gap)
-            neighbor_score += p_ctx.m_shared.m_con_weight[con_idx] >> 1;
+            neighbor_score += con_weight;
           else
-            neighbor_score -= p_ctx.m_shared.m_con_weight[con_idx] >> 1;
+            neighbor_score -= con_weight;
         }
       }
     }
@@ -202,14 +205,17 @@ void Scoring::progress_age(Neighbor_Ctx& p_ctx,
     size_t con_idx = model_var.con_idx(term_idx);
     size_t pos_in_con = model_var.pos_in_con(term_idx);
     auto& model_con = p_ctx.m_shared.m_model_manager.con(con_idx);
+    const long con_weight =
+        static_cast<long>(p_ctx.m_shared.m_con_weight[con_idx]);
+    const long scaled_con_weight = con_weight * 2;
     if (con_idx == 0 && p_ctx.m_shared.m_is_found_feasible)
     {
       double new_obj = p_ctx.m_shared.m_con_activity[con_idx] +
                        model_con.coeff(pos_in_con) * p_delta;
       if (new_obj < p_ctx.m_shared.m_con_activity[con_idx])
-        neighbor_score += p_ctx.m_shared.m_con_weight[con_idx];
+        neighbor_score += scaled_con_weight;
       else
-        neighbor_score -= p_ctx.m_shared.m_con_weight[con_idx];
+        neighbor_score -= scaled_con_weight;
     }
     else
     {
@@ -225,15 +231,15 @@ void Scoring::progress_age(Neighbor_Ctx& p_ctx,
         pre_sat = std::fabs(pre_gap) <= k_feas_tolerance;
         bool now_sat = std::fabs(new_gap) <= k_feas_tolerance;
         if (!pre_sat && now_sat)
-          neighbor_score += p_ctx.m_shared.m_con_weight[con_idx] * 2;
+          neighbor_score += scaled_con_weight * 2;
         else if (pre_sat && !now_sat)
-          neighbor_score -= p_ctx.m_shared.m_con_weight[con_idx] * 2;
+          neighbor_score -= scaled_con_weight * 2;
         else if (!pre_sat && !now_sat)
         {
           if (std::fabs(new_gap) < std::fabs(pre_gap))
-            neighbor_score += p_ctx.m_shared.m_con_weight[con_idx];
+            neighbor_score += scaled_con_weight;
           else
-            neighbor_score -= p_ctx.m_shared.m_con_weight[con_idx];
+            neighbor_score -= scaled_con_weight;
         }
       }
       else
@@ -241,15 +247,15 @@ void Scoring::progress_age(Neighbor_Ctx& p_ctx,
         pre_sat = pre_gap <= k_feas_tolerance;
         bool now_sat = new_gap <= k_feas_tolerance;
         if (!pre_sat && now_sat)
-          neighbor_score += p_ctx.m_shared.m_con_weight[con_idx];
+          neighbor_score += scaled_con_weight;
         else if (pre_sat && !now_sat)
-          neighbor_score -= p_ctx.m_shared.m_con_weight[con_idx];
+          neighbor_score -= scaled_con_weight;
         else if (!pre_sat && !now_sat)
         {
           if (new_gap < pre_gap)
-            neighbor_score += p_ctx.m_shared.m_con_weight[con_idx] >> 1;
+            neighbor_score += con_weight;
           else
-            neighbor_score -= p_ctx.m_shared.m_con_weight[con_idx] >> 1;
+            neighbor_score -= con_weight;
         }
       }
     }
