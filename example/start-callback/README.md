@@ -100,7 +100,7 @@ Objective value: -67.0000000000
 ## Key Points
 
 1. **Callback Signature**: `void callback(Start::Start_Ctx& ctx, void* user_data)`
-2. **Invocation Timing**: Called once after default initialization (zero/random)
+2. **Invocation Timing**: Called once in place of a built-in initialization (`zero`, `random`, `objective`, or `locks`)
 3. **Variable Access**: Modify `ctx.m_var_current_value[idx]` to set initial values
 4. **User Data**: Optional pointer for passing custom data to callback
 5. **Thread Safety**: Callback is called in the solver's main thread

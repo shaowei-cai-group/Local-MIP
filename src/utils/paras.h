@@ -186,7 +186,11 @@
            false,                                                         \
            "",                                                            \
            ".sol format start solution path")                             \
-  STR_PARA(start, 'm', false, "zero", "start method: zero/random")        \
+  STR_PARA(start,                                                         \
+           'm',                                                           \
+           false,                                                         \
+           "zero",                                                        \
+           "start method: zero/random/objective/locks")                   \
   STR_PARA(restart,                                                       \
            'y',                                                           \
            false,                                                         \

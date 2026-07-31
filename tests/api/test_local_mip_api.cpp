@@ -121,6 +121,14 @@ bool test_basic_setters()
   ok &= check(solver.m_local_search->m_start.m_default_method ==
                   Start::Method::random,
               "set_start_method should recognise random");
+  solver.set_start_method("objective");
+  ok &= check(solver.m_local_search->m_start.m_default_method ==
+                  Start::Method::objective_guided,
+              "set_start_method should recognise objective guidance");
+  solver.set_start_method("locks");
+  ok &= check(solver.m_local_search->m_start.m_default_method ==
+                  Start::Method::lock_guided,
+              "set_start_method should recognise lock guidance");
   solver.set_start_method("unsupported-method");
   ok &= check(solver.m_local_search->m_start.m_default_method ==
                   Start::Method::zero,
@@ -384,6 +392,7 @@ bool test_parameter_file_loading()
   std::fprintf(fp, "bms_random_ops = 199\n");
   std::fprintf(fp, "sol_path config.sol\n");
   std::fprintf(fp, "start_sol_path config-start.sol\n");
+  std::fprintf(fp, "start objective\n");
   std::fprintf(fp, "tabu_base 7\n");
   std::fprintf(fp, "split_eq 1\n");
   std::fprintf(fp, "c comment line should be ignored\n");
@@ -399,6 +408,8 @@ bool test_parameter_file_loading()
                                        "cli.sol",
                                        "--start_sol_path",
                                        "cli-start.sol",
+                                       "--start",
+                                       "locks",
                                        "--split_eq",
                                        "0"};
 
@@ -426,6 +437,8 @@ bool test_parameter_file_loading()
               "CLI should override config for sol_path");
   ok &= check(parameters.start_sol_path == std::string("cli-start.sol"),
               "CLI should override config for start_sol_path");
+  ok &= check(parameters.start == std::string("locks"),
+              "CLI should override config for start method");
   ok &= check(parameters.split_eq == 0,
               "CLI should override config for split_eq");
   ok &=
@@ -454,6 +467,7 @@ bool test_library_parameter_file_loading()
   std::fprintf(fp, "bms_random_ops = 199\n");
   std::fprintf(fp, "sol_path config.sol\n");
   std::fprintf(fp, "start_sol_path config-start.sol\n");
+  std::fprintf(fp, "start objective\n");
   std::fprintf(fp, "tabu_base 7\n");
   std::fprintf(fp, "split_eq 1\n");
   std::fclose(fp);
@@ -478,6 +492,9 @@ bool test_library_parameter_file_loading()
               "set_param_set_file should apply sol_path");
   ok &= check(solver.m_start_sol_path == std::string("config-start.sol"),
               "set_param_set_file should apply start_sol_path");
+  ok &= check(solver.m_local_search->m_start.m_default_method ==
+                  Start::Method::objective_guided,
+              "set_param_set_file should apply objective start");
   ok &= check(solver.m_local_search->m_tabu_base == 7,
               "set_param_set_file should apply tabu_base");
   ok &= check(solver.m_model_manager->m_split_eq,

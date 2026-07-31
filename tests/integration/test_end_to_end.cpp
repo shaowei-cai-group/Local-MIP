@@ -192,6 +192,44 @@ protected:
         check(false, "Random start failed");
       }
     }
+
+    // Test objective-guided start
+    {
+      Local_MIP solver;
+      solver.set_model_file(TEST_MPS_PATH);
+      solver.set_time_limit(1.0);
+      solver.set_start_method("objective");
+      solver.set_log_obj(false);
+
+      try
+      {
+        solver.run();
+        check(true, "Objective-guided start method should work");
+      }
+      catch (...)
+      {
+        check(false, "Objective-guided start failed");
+      }
+    }
+
+    // Test lock-guided start
+    {
+      Local_MIP solver;
+      solver.set_model_file(TEST_MPS_PATH);
+      solver.set_time_limit(1.0);
+      solver.set_start_method("locks");
+      solver.set_log_obj(false);
+
+      try
+      {
+        solver.run();
+        check(true, "Lock-guided start method should work");
+      }
+      catch (...)
+      {
+        check(false, "Lock-guided start failed");
+      }
+    }
   }
 };
 

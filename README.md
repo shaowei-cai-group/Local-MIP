@@ -93,6 +93,10 @@ Format rules:
 - Command line arguments override values from the configuration file
 - See `default.set` for descriptions and valid ranges
 
+### Built-in initial solution methods
+
+Built-in initial solution methods are selected with `--start` (or `start` in a parameter file): `zero`, `random`, `objective`, and `locks`. `objective` chooses finite bounds using the preprocessed minimization objective, while `locks` chooses the direction with fewer constraint locks and uses objective guidance to break ties. The default remains `zero`.
+
 ### Warm-start domain validation
 
 Warm-start `.sol` files may omit variables. Omitted variables use the solver's zero-start strategy: zero when it is inside the variable bounds, otherwise the nearest bound. Values within `feas_tolerance` of an integer or a variable bound are canonicalized; clearly fractional integer values, non-finite values, and values outside the bounds are rejected. A warm start may violate linear constraints because the local search is responsible for repairing them. Start/restart callbacks and custom moves use the same variable-domain checks.
@@ -104,7 +108,7 @@ CTest targets are defined in `tests/CMakeLists.txt`.
 cd build
 
 # Run unit test subset
-ctest --output-on-failure -R "^(api|callbacks|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config)$"
+ctest --output-on-failure -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config)$"
 
 # Run integration tests
 ctest --output-on-failure -R "^integration$"
