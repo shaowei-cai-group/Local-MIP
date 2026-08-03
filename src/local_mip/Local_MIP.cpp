@@ -12,19 +12,15 @@
 =====================================================================================*/
 
 #include "../local_search/Local_Search.h"
-#include "../model_api/Model_API.h"
 #include "../model_data/Model_Manager.h"
-#include "../reader/LP_Reader.h"
-#include "../reader/MPS_Reader.h"
+#include "../reader/Model_Reader.h"
 #include "../reader/Sol_Reader.h"
 #include "../utils/global_defs.h"
 #include "../utils/paras.h"
 #include "../utils/solver_error.h"
 #include "Local_MIP.h"
 
-#include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -34,23 +30,42 @@
 #include <limits>
 #include <memory>
 #include <mutex>
-#include <new>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
-Local_MIP::Local_MIP()
+Local_MIP::Local_MIP(
+    std::unique_ptr<Model_Manager> p_owned_model_manager,
+    std::shared_ptr<const Prepared_Model> p_prepared_model)
     : m_model_file(""), m_param_set_file(""), m_start_sol_path(""),
-      m_time_limit(10.0), m_timeout_thread(), m_timeout_mutex(),
+      m_time_limit(10.0), m_run_start(), m_lifecycle_mutex(),
+      m_run_started(false), m_timeout_thread(), m_timeout_mutex(),
       m_timeout_cv(), m_cancel_timeout(true), m_obj_log_thread(),
       m_stop_obj_log(true), m_user_termination_requested(false),
-      m_log_obj_enabled(true), m_reader(nullptr),
-      m_model_manager(std::make_unique<Model_Manager>()),
-      m_local_search(
-          std::make_unique<Local_Search>(m_model_manager.get())),
-      m_model_api(nullptr), m_use_model_api(false)
+      m_log_obj_enabled(true),
+      m_owned_model_manager(std::move(p_owned_model_manager)),
+      m_prepared_model(std::move(p_prepared_model)),
+      m_local_search(nullptr)
+{
+  if (m_owned_model_manager == nullptr && m_prepared_model == nullptr)
+    throw std::invalid_argument("prepared model cannot be null");
+
+  const Model_Manager* manager = m_prepared_model != nullptr
+                                     ? &m_prepared_model->model_manager()
+                                     : m_owned_model_manager.get();
+  m_local_search = std::make_unique<Local_Search>(manager);
+}
+
+Local_MIP::Local_MIP()
+    : Local_MIP(std::make_unique<Model_Manager>(), nullptr)
+{
+}
+
+Local_MIP::Local_MIP(
+    std::shared_ptr<const Prepared_Model> p_prepared_model)
+    : Local_MIP(nullptr, std::move(p_prepared_model))
 {
 }
 
@@ -64,12 +79,15 @@ Local_MIP::~Local_MIP()
 
 void Local_MIP::set_model_file(const std::string& p_model_file)
 {
+  auto config_lock = lock_configuration();
+  mutable_model_manager();
   m_model_file = p_model_file;
   printf("c model file is set to : %s\n", m_model_file.c_str());
 }
 
 void Local_MIP::set_param_set_file(const std::string& p_param_set_file)
 {
+  auto config_lock = lock_configuration();
   if (p_param_set_file.empty())
     throw std::invalid_argument("parameter set file path is empty");
 
@@ -80,7 +98,41 @@ void Local_MIP::set_param_set_file(const std::string& p_param_set_file)
       (!std::isfinite(params.time_limit) || params.time_limit <= 0.0))
     throw std::invalid_argument("time limit must be positive");
 
-  if (params.has_loaded_param("model_file"))
+  if (m_prepared_model != nullptr)
+  {
+    const auto& manager = m_prepared_model->model_manager();
+    if (params.has_loaded_param("model_file"))
+    {
+      throw std::logic_error(
+          "a solver created from Prepared_Model cannot replace its model");
+    }
+    if (params.has_loaded_param("feas_tolerance") &&
+        params.feas_tolerance != manager.feas_tolerance())
+    {
+      throw std::logic_error(
+          "parameter file feas_tolerance does not match Prepared_Model");
+    }
+    if (params.has_loaded_param("zero_tolerance") &&
+        params.zero_tolerance != manager.zero_tolerance())
+    {
+      throw std::logic_error(
+          "parameter file zero_tolerance does not match Prepared_Model");
+    }
+    if (params.has_loaded_param("bound_strengthen") &&
+        params.bound_strengthen != manager.bound_strengthen())
+    {
+      throw std::logic_error(
+          "parameter file bound_strengthen does not match Prepared_Model");
+    }
+    if (params.has_loaded_param("split_eq") &&
+        (params.split_eq != 0) != manager.split_eq())
+    {
+      throw std::logic_error(
+          "parameter file split_eq does not match Prepared_Model");
+    }
+  }
+
+  if (m_prepared_model == nullptr && params.has_loaded_param("model_file"))
     set_model_file(params.model_file);
   if (params.has_loaded_param("sol_path"))
     set_sol_path(params.sol_path);
@@ -90,13 +142,16 @@ void Local_MIP::set_param_set_file(const std::string& p_param_set_file)
     set_time_limit(params.time_limit);
   if (params.has_loaded_param("random_seed"))
     set_random_seed(static_cast<uint32_t>(params.random_seed));
-  if (params.has_loaded_param("feas_tolerance"))
+  if (m_prepared_model == nullptr &&
+      params.has_loaded_param("feas_tolerance"))
     set_feas_tolerance(params.feas_tolerance);
   if (params.has_loaded_param("opt_tolerance"))
     set_opt_tolerance(params.opt_tolerance);
-  if (params.has_loaded_param("zero_tolerance"))
+  if (m_prepared_model == nullptr &&
+      params.has_loaded_param("zero_tolerance"))
     set_zero_tolerance(params.zero_tolerance);
-  if (params.has_loaded_param("bound_strengthen"))
+  if (m_prepared_model == nullptr &&
+      params.has_loaded_param("bound_strengthen"))
     set_bound_strengthen(params.bound_strengthen);
   if (params.has_loaded_param("log_obj"))
     set_log_obj(params.log_obj != 0);
@@ -126,7 +181,7 @@ void Local_MIP::set_param_set_file(const std::string& p_param_set_file)
     set_activity_period(static_cast<size_t>(params.activity_period));
   if (params.has_loaded_param("break_eq_feas"))
     set_break_eq_feas(params.break_eq_feas != 0);
-  if (params.has_loaded_param("split_eq"))
+  if (m_prepared_model == nullptr && params.has_loaded_param("split_eq"))
     set_split_eq(params.split_eq != 0);
   if (params.has_loaded_param("start"))
     set_start_method(params.start);
@@ -144,6 +199,7 @@ void Local_MIP::set_param_set_file(const std::string& p_param_set_file)
 
 void Local_MIP::set_time_limit(double p_time_limit)
 {
+  auto config_lock = lock_configuration();
   if (!std::isfinite(p_time_limit) || p_time_limit <= 0.0 ||
       p_time_limit > k_max_time_limit)
   {
@@ -156,31 +212,36 @@ void Local_MIP::set_time_limit(double p_time_limit)
 
 void Local_MIP::set_bound_strengthen(int p_level)
 {
-  m_model_manager->set_bound_strengthen(p_level);
+  auto config_lock = lock_configuration();
+  mutable_model_manager().set_bound_strengthen(p_level);
   printf("c bound strengthen level is set to : %d\n", p_level);
 }
 
 void Local_MIP::set_split_eq(bool p_enable)
 {
-  m_model_manager->set_split_eq(p_enable);
+  auto config_lock = lock_configuration();
+  mutable_model_manager().set_split_eq(p_enable);
   printf("c split equality conversion is set to : %s\n",
          p_enable ? "true" : "false");
 }
 
 void Local_MIP::set_log_obj(bool p_enable)
 {
+  auto config_lock = lock_configuration();
   m_log_obj_enabled = p_enable;
   printf("c log obj is set to : %s\n", p_enable ? "true" : "false");
 }
 
 void Local_MIP::set_sol_path(const std::string& p_sol_path)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_sol_path(p_sol_path);
   printf("c sol path is set to : %s\n", p_sol_path.c_str());
 }
 
 void Local_MIP::set_start_sol_path(const std::string& p_start_sol_path)
 {
+  auto config_lock = lock_configuration();
   m_start_sol_path = p_start_sol_path;
   printf("c start solution path is set to : %s\n",
          m_start_sol_path.c_str());
@@ -188,6 +249,7 @@ void Local_MIP::set_start_sol_path(const std::string& p_start_sol_path)
 
 void Local_MIP::set_random_seed(uint32_t p_seed)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_random_seed(p_seed);
   printf("c random seed is set to : %u%s\n",
          p_seed,
@@ -196,42 +258,46 @@ void Local_MIP::set_random_seed(uint32_t p_seed)
 
 void Local_MIP::set_feas_tolerance(double p_value)
 {
+  auto config_lock = lock_configuration();
   if (!std::isfinite(p_value) || p_value < 0.0 ||
       p_value > k_max_feas_tolerance)
   {
     throw std::invalid_argument(
         "feasibility tolerance must be finite and in [0, 1e-2]");
   }
-  k_feas_tolerance = p_value;
+  mutable_model_manager().set_feas_tolerance(p_value);
   printf("c feasibility tolerance is set to : %.10g\n", p_value);
 }
 
 void Local_MIP::set_opt_tolerance(double p_value)
 {
+  auto config_lock = lock_configuration();
   if (!std::isfinite(p_value) || p_value < 0.0 ||
       p_value > k_max_opt_tolerance)
   {
     throw std::invalid_argument(
         "optimality tolerance must be finite and in [0, 1]");
   }
-  k_opt_tolerance = p_value;
+  m_local_search->set_opt_tolerance(p_value);
   printf("c optimality tolerance is set to : %.10g\n", p_value);
 }
 
 void Local_MIP::set_zero_tolerance(double p_value)
 {
+  auto config_lock = lock_configuration();
   if (!std::isfinite(p_value) || p_value < 0.0 ||
       p_value > k_max_zero_tolerance)
   {
     throw std::invalid_argument(
         "zero tolerance must be finite and in [0, 1e-3]");
   }
-  k_zero_tolerance = p_value;
+  mutable_model_manager().set_zero_tolerance(p_value);
   printf("c zero value tolerance is set to : %.10g\n", p_value);
 }
 
 void Local_MIP::set_start_method(const std::string& p_method_name)
 {
+  auto config_lock = lock_configuration();
   printf("c init method is set to : %s\n", p_method_name.c_str());
   m_local_search->set_start_method(p_method_name);
 }
@@ -239,18 +305,21 @@ void Local_MIP::set_start_method(const std::string& p_method_name)
 void Local_MIP::set_start_cbk(Local_Search::Start_Cbk p_start_cbk,
                               void* p_user_data)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_start_cbk(std::move(p_start_cbk), p_user_data);
   printf("c custom start callback is registered.\n");
 }
 
 void Local_MIP::set_restart_method(const std::string& p_restart_name)
 {
+  auto config_lock = lock_configuration();
   printf("c restart method is set to : %s\n", p_restart_name.c_str());
   m_local_search->set_restart_method(p_restart_name);
 }
 
 void Local_MIP::set_restart_step(size_t p_restart_step)
 {
+  auto config_lock = lock_configuration();
   printf("c restart step is set to : %zu\n", p_restart_step);
   m_local_search->set_restart_step(p_restart_step);
 }
@@ -258,12 +327,14 @@ void Local_MIP::set_restart_step(size_t p_restart_step)
 void Local_MIP::set_restart_cbk(Local_Search::Restart_Cbk p_restart_cbk,
                                 void* p_user_data)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_restart_cbk(std::move(p_restart_cbk), p_user_data);
   printf("c custom restart callback is registered.\n");
 }
 
 void Local_MIP::set_weight_method(const std::string& p_weight_name)
 {
+  auto config_lock = lock_configuration();
   printf("c weight method is set to : %s\n", p_weight_name.c_str());
   m_local_search->set_weight_method(p_weight_name);
 }
@@ -271,12 +342,14 @@ void Local_MIP::set_weight_method(const std::string& p_weight_name)
 void Local_MIP::set_weight_cbk(Local_Search::Weight_Cbk p_weight_cbk,
                                void* p_user_data)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_weight_cbk(std::move(p_weight_cbk), p_user_data);
   printf("c custom weight callback is registered.\n");
 }
 
 void Local_MIP::set_weight_smooth_probability(size_t p_weight_smooth_prob)
 {
+  auto config_lock = lock_configuration();
   printf("c weight smooth probability is set to : %zu\n",
          p_weight_smooth_prob);
   m_local_search->set_weight_smooth_probability(p_weight_smooth_prob);
@@ -284,6 +357,7 @@ void Local_MIP::set_weight_smooth_probability(size_t p_weight_smooth_prob)
 
 void Local_MIP::set_lift_scoring_method(const std::string& p_method_name)
 {
+  auto config_lock = lock_configuration();
   printf("c lift scoring method is set to : %s\n", p_method_name.c_str());
   m_local_search->set_lift_scoring_method(p_method_name);
 }
@@ -291,6 +365,7 @@ void Local_MIP::set_lift_scoring_method(const std::string& p_method_name)
 void Local_MIP::set_neighbor_scoring_method(
     const std::string& p_method_name)
 {
+  auto config_lock = lock_configuration();
   printf("c neighbor scoring method is set to : %s\n",
          p_method_name.c_str());
   m_local_search->set_neighbor_scoring_method(p_method_name);
@@ -299,6 +374,7 @@ void Local_MIP::set_neighbor_scoring_method(
 void Local_MIP::set_lift_scoring_cbk(Local_Search::Lift_Scoring_Cbk p_cbk,
                                      void* p_user_data)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_lift_scoring_cbk(std::move(p_cbk), p_user_data);
   printf("c custom lift scoring callback is registered.\n");
 }
@@ -307,54 +383,63 @@ void Local_MIP::set_neighbor_scoring_cbk(
     Local_Search::Neighbor_Scoring_Cbk p_cbk,
     void* p_user_data)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_neighbor_scoring_cbk(std::move(p_cbk), p_user_data);
   printf("c custom neighbor scoring callback is registered.\n");
 }
 
 void Local_MIP::set_bms_unsat_con(size_t p_value)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_bms_unsat_con(p_value);
   printf("c unsatisfied constraint sample size : %zu\n", p_value);
 }
 
 void Local_MIP::set_bms_mtm_unsat_op(size_t p_value)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_bms_mtm_unsat_op(p_value);
   printf("c unsatisfied MTM operations: %zu\n", p_value);
 }
 
 void Local_MIP::set_bms_sat_con(size_t p_value)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_bms_sat_con(p_value);
   printf("c satisfied constraint sample size : %zu\n", p_value);
 }
 
 void Local_MIP::set_bms_mtm_sat_op(size_t p_value)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_bms_mtm_sat_op(p_value);
   printf("c satisfied MTM operations : %zu\n", p_value);
 }
 
 void Local_MIP::set_bms_flip_op(size_t p_value)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_bms_flip_op(p_value);
   printf("c flip operations : %zu\n", p_value);
 }
 
 void Local_MIP::set_bms_easy_op(size_t p_value)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_bms_easy_op(p_value);
   printf("c easy operations : %zu\n", p_value);
 }
 
 void Local_MIP::set_bms_random_op(size_t p_value)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_bms_random_op(p_value);
   printf("c random unsatisfied operations : %zu\n", p_value);
 }
 
 void Local_MIP::clear_neighbor_list()
 {
+  auto config_lock = lock_configuration();
   m_local_search->clear_neighbor_list();
   printf("c neighbor list cleared\n");
 }
@@ -363,6 +448,7 @@ void Local_MIP::add_neighbor(const std::string& p_neighbor_name,
                              size_t p_bms_con,
                              size_t p_bms_op)
 {
+  auto config_lock = lock_configuration();
   m_local_search->add_neighbor(p_neighbor_name, p_bms_con, p_bms_op);
   printf("c added neighbor: %s (bms_con=%zu, bms_op=%zu)\n",
          p_neighbor_name.c_str(),
@@ -375,6 +461,7 @@ void Local_MIP::add_custom_neighbor(
     Local_Search::Neighbor_Cbk p_neighbor_cbk,
     void* p_user_data)
 {
+  auto config_lock = lock_configuration();
   m_local_search->add_custom_neighbor(
       p_neighbor_name, std::move(p_neighbor_cbk), p_user_data);
   printf("c added custom neighbor: %s\n", p_neighbor_name.c_str());
@@ -382,24 +469,28 @@ void Local_MIP::add_custom_neighbor(
 
 void Local_MIP::reset_default_neighbor_list()
 {
+  auto config_lock = lock_configuration();
   m_local_search->reset_default_neighbor_list();
   printf("c neighbor list reset to default\n");
 }
 
 void Local_MIP::set_tabu_base(size_t p_value)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_tabu_base(p_value);
   printf("c tabu tenure base : %zu\n", p_value);
 }
 
 void Local_MIP::set_activity_period(size_t p_value)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_activity_period(p_value);
   printf("c constraint activity period : %zu\n", p_value);
 }
 
 void Local_MIP::set_tabu_variation(size_t p_value)
 {
+  auto config_lock = lock_configuration();
   if (p_value == 0)
     throw std::invalid_argument("tabu variation must be at least 1");
   m_local_search->set_tabu_variation(p_value);
@@ -408,6 +499,7 @@ void Local_MIP::set_tabu_variation(size_t p_value)
 
 void Local_MIP::set_break_eq_feas(bool p_enable)
 {
+  auto config_lock = lock_configuration();
   m_local_search->set_break_eq_feas(p_enable);
   printf("c break feasibility on equality constraints is set to : %s\n",
          p_enable ? "true" : "false");
@@ -415,26 +507,49 @@ void Local_MIP::set_break_eq_feas(bool p_enable)
 
 void Local_MIP::run()
 {
-  printf("c welcome to Local-MIP solver\n");
-  if (m_use_model_api)
-    m_model_api->build_model(*m_model_manager);
-  else
   {
-    prepare_reader();
-    m_reader->read(m_model_file.c_str());
+    std::lock_guard<std::recursive_mutex> lock(m_lifecycle_mutex);
+    if (m_run_started)
+      throw std::logic_error(
+          "run() may only be called once per Local_MIP object");
+    m_run_started = true;
   }
+  run_impl();
+}
 
-  if (!m_model_manager->process_after_read())
+void Local_MIP::run_impl()
+{
+  printf("c welcome to Local-MIP solver\n");
+  if (m_prepared_model == nullptr)
   {
-    printf("c model is infeasible, skip local search.\n");
-    return;
+    Model_Manager& manager = mutable_model_manager();
+    if (m_model_file.empty())
+    {
+      throw Solver_Error(
+          "model file path is empty, call set_model_file() first");
+    }
+    try
+    {
+      read_model_file(m_model_file, manager);
+    }
+    catch (const Solver_Error& error)
+    {
+      printf("o %s\n", error.what());
+      throw;
+    }
+
+    if (!manager.process_after_read())
+    {
+      printf("c model is infeasible, skip local search.\n");
+      return;
+    }
   }
   std::vector<double> start_solution;
   std::vector<char> start_solution_mask;
   if (!m_start_sol_path.empty())
   {
     Sol_Read_Result result = Sol_Reader::read(m_start_sol_path,
-                                              *m_model_manager,
+                                              *get_model_manager(),
                                               start_solution,
                                               &start_solution_mask);
     if (!result.m_success)
@@ -447,7 +562,7 @@ void Local_MIP::run()
            result.m_unknown_var_num);
   }
 
-  g_clk_start = std::chrono::steady_clock::now();
+  m_run_start = std::chrono::steady_clock::now();
   {
     std::lock_guard<std::mutex> lock(m_timeout_mutex);
     m_cancel_timeout = false;
@@ -474,13 +589,24 @@ void Local_MIP::run()
   if (m_user_termination_requested.load(std::memory_order_relaxed))
   {
     printf("c [%10.2lf] local search is terminated by user.\n",
-           elapsed_time());
+           elapsed_seconds());
   }
   if (m_local_search->finalize_result())
     m_local_search->output_result();
   else
     printf("o solution verify failed.\n");
-  printf("c [%10.2lf] local search is finished.\n", elapsed_time());
+  printf("c [%10.2lf] local search is finished.\n", elapsed_seconds());
+}
+
+std::unique_lock<std::recursive_mutex> Local_MIP::lock_configuration()
+{
+  std::unique_lock<std::recursive_mutex> lock(m_lifecycle_mutex);
+  if (m_run_started)
+  {
+    throw std::logic_error(
+        "solver configuration cannot be modified after run() has started");
+  }
+  return lock;
 }
 
 void Local_MIP::terminate()
@@ -508,7 +634,7 @@ void Local_MIP::timeout_handler()
   }
   m_local_search->terminate();
   printf("c [%10.2lf] local search is terminated by timeout.\n",
-         elapsed_time());
+         elapsed_seconds());
 }
 
 void Local_MIP::request_timeout_stop()
@@ -548,8 +674,9 @@ void Local_MIP::obj_log_handler()
     {
       last_value = current_value;
       has_value = true;
-      printf(
-          "c [%10.2lf] obj*: %-20.15g\n", elapsed_time(), current_value);
+      printf("c [%10.2lf] obj*: %-20.15g\n",
+             elapsed_seconds(),
+             current_value);
     }
     if (m_stop_obj_log.load(std::memory_order_relaxed))
       break;
@@ -557,31 +684,11 @@ void Local_MIP::obj_log_handler()
   }
 }
 
-void Local_MIP::prepare_reader()
+double Local_MIP::elapsed_seconds() const
 {
-  if (m_model_file.empty())
-    throw Solver_Error(
-        "model file path is empty, call set_model_file() first");
-  m_reader.reset();
-  std::string extension;
-  auto dot_pos = m_model_file.find_last_of('.');
-  if (dot_pos != std::string::npos)
-    extension = m_model_file.substr(dot_pos + 1);
-  std::transform(extension.begin(),
-                 extension.end(),
-                 extension.begin(),
-                 [](unsigned char ch)
-                 { return static_cast<char>(std::tolower(ch)); });
-  if (extension == "mps")
-    m_reader = std::make_unique<MPS_Reader>(m_model_manager.get());
-  else if (extension == "lp")
-    m_reader = std::make_unique<LP_Reader>(m_model_manager.get());
-  else
-  {
-    std::string message = "unsupported model file format: " + m_model_file;
-    printf("o %s\n", message.c_str());
-    throw Solver_Error(message);
-  }
+  return std::chrono::duration_cast<std::chrono::duration<double>>(
+             std::chrono::steady_clock::now() - m_run_start)
+      .count();
 }
 
 double Local_MIP::get_obj_value() const
@@ -601,124 +708,17 @@ const std::vector<double>& Local_MIP::get_solution() const
 
 const Model_Manager* Local_MIP::get_model_manager() const
 {
-  return m_model_manager.get();
+  return m_prepared_model != nullptr ? &m_prepared_model->model_manager()
+                                     : m_owned_model_manager.get();
 }
 
-bool Local_MIP::check_model_api() const
+Model_Manager& Local_MIP::mutable_model_manager()
 {
-  if (!m_model_api)
+  if (m_owned_model_manager == nullptr)
   {
-    fprintf(
-        stderr,
-        "Error: Model API not enabled. Call enable_model_api() first.\n");
-    return false;
+    throw std::logic_error(
+        "a solver created from Prepared_Model cannot modify model "
+        "configuration");
   }
-  return true;
-}
-
-void Local_MIP::enable_model_api()
-{
-  try
-  {
-    m_model_api = std::make_unique<Model_API>();
-    m_use_model_api = true;
-    printf("c Model API enabled for programmatic model building\n");
-  }
-  catch (const std::bad_alloc& e)
-  {
-    fprintf(stderr,
-            "Error: Failed to initialize Model API (memory allocation "
-            "failed)\n");
-    m_use_model_api = false;
-    m_model_api = nullptr;
-  }
-}
-
-void Local_MIP::set_sense(Model_API::Sense p_sense)
-{
-  if (!check_model_api())
-    return;
-  m_model_api->set_sense(p_sense);
-}
-
-bool Local_MIP::set_obj_offset(double p_offset)
-{
-  if (!check_model_api())
-    return false;
-  return m_model_api->set_obj_offset(p_offset);
-}
-
-int Local_MIP::add_var(const std::string& p_name,
-                       double p_lb,
-                       double p_ub,
-                       double p_cost,
-                       Var_Type p_type)
-{
-  if (!check_model_api())
-    return -1;
-  return m_model_api->add_var(p_name, p_lb, p_ub, p_cost, p_type);
-}
-
-bool Local_MIP::set_cost(int p_col, double p_cost)
-{
-  if (!check_model_api())
-    return false;
-  return m_model_api->set_cost(p_col, p_cost);
-}
-
-bool Local_MIP::set_cost(const std::string& p_name, double p_cost)
-{
-  if (!check_model_api())
-    return false;
-  return m_model_api->set_cost(p_name, p_cost);
-}
-
-int Local_MIP::add_con(double p_lb,
-                       double p_ub,
-                       const std::vector<int>& p_cols,
-                       const std::vector<double>& p_coefs)
-{
-  if (!check_model_api())
-    return -1;
-  return m_model_api->add_con(p_lb, p_ub, p_cols, p_coefs);
-}
-
-int Local_MIP::add_con(double p_lb,
-                       double p_ub,
-                       const std::vector<std::string>& p_names,
-                       const std::vector<double>& p_coefs)
-{
-  if (!check_model_api())
-    return -1;
-  return m_model_api->add_con(p_lb, p_ub, p_names, p_coefs);
-}
-
-bool Local_MIP::add_var_to_con(int p_row, int p_col, double p_coef)
-{
-  if (!check_model_api())
-    return false;
-  return m_model_api->add_var_to_con(p_row, p_col, p_coef);
-}
-
-bool Local_MIP::add_var_to_con(int p_row,
-                               const std::string& p_name,
-                               double p_coef)
-{
-  if (!check_model_api())
-    return false;
-  return m_model_api->add_var_to_con(p_row, p_name, p_coef);
-}
-
-bool Local_MIP::set_integrality(int p_col, Var_Type p_type)
-{
-  if (!check_model_api())
-    return false;
-  return m_model_api->set_integrality(p_col, p_type);
-}
-
-bool Local_MIP::set_integrality(const std::string& p_name, Var_Type p_type)
-{
-  if (!check_model_api())
-    return false;
-  return m_model_api->set_integrality(p_name, p_type);
+  return *m_owned_model_manager;
 }

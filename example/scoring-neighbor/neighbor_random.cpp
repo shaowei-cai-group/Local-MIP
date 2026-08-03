@@ -68,7 +68,7 @@ int main(int argc, char** argv)
     auto& model_var = ctx.m_shared.m_model_manager.var(p_var_idx);
 
     // For binary variables, use stamp to avoid duplicate evaluation
-    if (model_var.is_binary())
+    if (model_var.type() == Var_Type::binary)
     {
       if (ctx.m_binary_op_stamp[p_var_idx] == ctx.m_binary_op_stamp_token)
         return;
@@ -128,8 +128,10 @@ int main(int argc, char** argv)
         // Equality constraint
         if (ctx.m_shared.m_con_is_equality[con_idx])
         {
-          pre_sat = std::fabs(pre_gap) <= k_feas_tolerance;
-          bool now_sat = std::fabs(new_gap) <= k_feas_tolerance;
+          const double feas_tolerance =
+              ctx.m_shared.m_model_manager.feas_tolerance();
+          pre_sat = std::fabs(pre_gap) <= feas_tolerance;
+          bool now_sat = std::fabs(new_gap) <= feas_tolerance;
 
           if (!pre_sat && now_sat)
             neighbor_score += ctx.m_shared.m_con_weight[con_idx] * 2;
@@ -146,8 +148,10 @@ int main(int argc, char** argv)
         // Inequality constraint
         else
         {
-          pre_sat = pre_gap <= k_feas_tolerance;
-          bool now_sat = new_gap <= k_feas_tolerance;
+          const double feas_tolerance =
+              ctx.m_shared.m_model_manager.feas_tolerance();
+          pre_sat = pre_gap <= feas_tolerance;
+          bool now_sat = new_gap <= feas_tolerance;
 
           if (!pre_sat && now_sat)
             neighbor_score += ctx.m_shared.m_con_weight[con_idx];

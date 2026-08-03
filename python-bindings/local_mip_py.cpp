@@ -1,4 +1,5 @@
 #include "../src/local_mip/Local_MIP.h"
+#include "../src/model_api/Model_Builder.h"
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <cstddef>
@@ -367,6 +368,117 @@ PYBIND11_MODULE(localmip_py, m)
       .value("real", Var_Type::real)
       .value("fixed", Var_Type::fixed);
 
+  py::class_<Model_Prepare_Options>(m, "ModelPrepareOptions")
+      .def(py::init<>())
+      .def_readwrite("feas_tolerance",
+                     &Model_Prepare_Options::feas_tolerance)
+      .def_readwrite("zero_tolerance",
+                     &Model_Prepare_Options::zero_tolerance)
+      .def_readwrite("bound_strengthen",
+                     &Model_Prepare_Options::bound_strengthen)
+      .def_readwrite("split_eq", &Model_Prepare_Options::split_eq);
+
+  // pybind11 holders use shared_ptr<T>; expose only const Prepared_Model
+  // operations and cast away constness solely at the binding boundary.
+  py::class_<Prepared_Model, std::shared_ptr<Prepared_Model>>(
+      m, "PreparedModel")
+      .def_static(
+          "from_file",
+          [](const std::string& path,
+             const Model_Prepare_Options& options)
+          {
+            const Model_Prepare_Options options_copy = options;
+            std::shared_ptr<const Prepared_Model> prepared;
+            {
+              py::gil_scoped_release release;
+              prepared = Prepared_Model::from_file(path, options_copy);
+            }
+            return std::const_pointer_cast<Prepared_Model>(prepared);
+          },
+          py::arg("path"),
+          py::arg("options") = Model_Prepare_Options())
+      .def_property_readonly(
+          "model_manager",
+          [](const Prepared_Model& self) -> const Model_Manager&
+          { return self.model_manager(); },
+          py::return_value_policy::reference_internal);
+
+  py::class_<Model_Builder>(m, "ModelBuilder")
+      .def(py::init<>())
+      .def("set_sense", &Model_API::set_sense, py::arg("sense"))
+      .def("set_obj_offset",
+           &Model_API::set_obj_offset,
+           py::arg("offset"))
+      .def("add_var",
+           &Model_API::add_var,
+           py::arg("name"),
+           py::arg("lb"),
+           py::arg("ub"),
+           py::arg("cost") = 0.0,
+           py::arg("type") = Var_Type::real)
+      .def("set_cost",
+           py::overload_cast<int, double>(&Model_API::set_cost),
+           py::arg("col"),
+           py::arg("cost"))
+      .def("set_cost",
+           py::overload_cast<const std::string&, double>(
+               &Model_API::set_cost),
+           py::arg("name"),
+           py::arg("cost"))
+      .def("add_con",
+           py::overload_cast<double,
+                             double,
+                             const std::vector<int>&,
+                             const std::vector<double>&>(
+               &Model_API::add_con),
+           py::arg("lb"),
+           py::arg("ub"),
+           py::arg("cols"),
+           py::arg("coefs"))
+      .def("add_con",
+           py::overload_cast<double,
+                             double,
+                             const std::vector<std::string>&,
+                             const std::vector<double>&>(
+               &Model_API::add_con),
+           py::arg("lb"),
+           py::arg("ub"),
+           py::arg("names"),
+           py::arg("coefs"))
+      .def("add_var_to_con",
+           py::overload_cast<int, int, double>(
+               &Model_API::add_var_to_con),
+           py::arg("row"),
+           py::arg("col"),
+           py::arg("coef"))
+      .def("add_var_to_con",
+           py::overload_cast<int, const std::string&, double>(
+               &Model_API::add_var_to_con),
+           py::arg("row"),
+           py::arg("name"),
+           py::arg("coef"))
+      .def("set_integrality",
+           py::overload_cast<int, Var_Type>(&Model_API::set_integrality),
+           py::arg("col"),
+           py::arg("type"))
+      .def("set_integrality",
+           py::overload_cast<const std::string&, Var_Type>(
+               &Model_API::set_integrality),
+           py::arg("name"),
+           py::arg("type"))
+      .def(
+          "prepare",
+          [](const Model_API& self,
+             const Model_Prepare_Options& options)
+          {
+            std::shared_ptr<const Prepared_Model> prepared =
+                self.prepare(options);
+            return std::const_pointer_cast<Prepared_Model>(prepared);
+          },
+          py::arg("options") = Model_Prepare_Options())
+      .def_property_readonly("num_vars", &Model_API::get_num_vars)
+      .def_property_readonly("num_cons", &Model_API::get_num_cons);
+
   py::class_<Model_Var>(m, "ModelVar")
       .def_property_readonly("name", &Model_Var::name)
       .def_property_readonly("idx", &Model_Var::idx)
@@ -374,9 +486,6 @@ PYBIND11_MODULE(localmip_py, m)
       .def_property_readonly("term_num", &Model_Var::term_num)
       .def_property_readonly("upper_bound", &Model_Var::upper_bound)
       .def_property_readonly("lower_bound", &Model_Var::lower_bound)
-      .def("in_bound", &Model_Var::in_bound, py::arg("value"))
-      .def("is_fixed", &Model_Var::is_fixed)
-      .def("is_binary", &Model_Var::is_binary)
       .def("is_real", &Model_Var::is_real)
       .def("is_general_integer", &Model_Var::is_general_integer)
       .def("requires_integrality", &Model_Var::requires_integrality)
@@ -416,6 +525,14 @@ PYBIND11_MODULE(localmip_py, m)
                              [](const Model_Manager& self)
                              { return self.is_min() > 0; })
       .def_property_readonly("obj_offset", &Model_Manager::obj_offset)
+      .def_property_readonly("feas_tolerance",
+                             &Model_Manager::feas_tolerance)
+      .def_property_readonly("zero_tolerance",
+                             &Model_Manager::zero_tolerance)
+      .def("var_in_bound",
+           &Model_Manager::var_in_bound,
+           py::arg("var"),
+           py::arg("value"))
       .def("var",
            [](const Model_Manager& self, size_t p_idx) -> const Model_Var&
            {
@@ -492,6 +609,9 @@ PYBIND11_MODULE(localmip_py, m)
                              py::keep_alive<0, 1>());
 
   py::class_<Readonly_Ctx>(m, "ReadonlyCtx")
+      .def_property_readonly("opt_tolerance",
+                             [](const Readonly_Ctx& self)
+                             { return self.m_opt_tolerance; })
       .def_property_readonly(
           "model_manager",
           [](const Readonly_Ctx& self) -> const Model_Manager&
@@ -787,6 +907,13 @@ PYBIND11_MODULE(localmip_py, m)
 
   py::class_<Local_MIP>(m, "LocalMIP")
       .def(py::init<>())
+      .def(py::init(
+               [](std::shared_ptr<Prepared_Model> prepared_model)
+               {
+                 return std::make_unique<Local_MIP>(
+                     std::move(prepared_model));
+               }),
+           py::arg("prepared_model"))
 
       // Basic configuration
       .def("set_model_file", &Local_MIP::set_model_file, py::arg("path"))
@@ -926,67 +1053,6 @@ PYBIND11_MODULE(localmip_py, m)
       .def("set_break_eq_feas",
            &Local_MIP::set_break_eq_feas,
            py::arg("enable"))
-
-      // Model API (programmatic model building)
-      .def("enable_model_api", &Local_MIP::enable_model_api)
-      .def("set_sense", &Local_MIP::set_sense, py::arg("sense"))
-      .def("set_obj_offset", &Local_MIP::set_obj_offset, py::arg("offset"))
-      .def("add_var",
-           &Local_MIP::add_var,
-           py::arg("name"),
-           py::arg("lb"),
-           py::arg("ub"),
-           py::arg("cost") = 0.0,
-           py::arg("type") = Var_Type::real)
-      .def("set_cost",
-           py::overload_cast<int, double>(&Local_MIP::set_cost),
-           py::arg("col"),
-           py::arg("cost"))
-      .def("set_cost",
-           py::overload_cast<const std::string&, double>(
-               &Local_MIP::set_cost),
-           py::arg("name"),
-           py::arg("cost"))
-      .def("add_con",
-           py::overload_cast<double,
-                             double,
-                             const std::vector<int>&,
-                             const std::vector<double>&>(
-               &Local_MIP::add_con),
-           py::arg("lb"),
-           py::arg("ub"),
-           py::arg("cols"),
-           py::arg("coefs"))
-      .def("add_con",
-           py::overload_cast<double,
-                             double,
-                             const std::vector<std::string>&,
-                             const std::vector<double>&>(
-               &Local_MIP::add_con),
-           py::arg("lb"),
-           py::arg("ub"),
-           py::arg("names"),
-           py::arg("coefs"))
-      .def("add_var_to_con",
-           py::overload_cast<int, int, double>(&Local_MIP::add_var_to_con),
-           py::arg("row"),
-           py::arg("col"),
-           py::arg("coef"))
-      .def("add_var_to_con",
-           py::overload_cast<int, const std::string&, double>(
-               &Local_MIP::add_var_to_con),
-           py::arg("row"),
-           py::arg("name"),
-           py::arg("coef"))
-      .def("set_integrality",
-           py::overload_cast<int, Var_Type>(&Local_MIP::set_integrality),
-           py::arg("col"),
-           py::arg("type"))
-      .def("set_integrality",
-           py::overload_cast<const std::string&, Var_Type>(
-               &Local_MIP::set_integrality),
-           py::arg("name"),
-           py::arg("type"))
 
       // Callbacks
       .def(

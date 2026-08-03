@@ -90,8 +90,7 @@ print("Start callback calls:", stats["calls"])
 ```
 
 ## Model API (Programmatic Modeling)
-The bindings also expose Local-MIP's **Model API**, which lets you build a model
-directly in Python (mirrors `example/model-api/model_api_demo.cpp`).
+The bindings also expose Local-MIP's **Model API**, which lets you build a model directly in Python (mirrors `example/model-api/model_api_demo.cpp`).
 
 Run the demo:
 ```bash
@@ -110,10 +109,38 @@ Key symbols:
 - `lm.VarType.{binary,general_integer,real,fixed}`
 - `LocalMIP.set_param_set_file(...)`
 - `LocalMIP.set_bms_unsat_con(...)`, `set_bms_mtm_unsat_op(...)`, `set_bms_sat_con(...)`, `set_bms_mtm_sat_op(...)`, `set_bms_flip_op(...)`, `set_bms_easy_op(...)`, `set_bms_random_op(...)`
-- `LocalMIP.enable_model_api()`
-- `LocalMIP.add_var(...)`, `LocalMIP.add_con(...)`
 - `LocalMIP.get_solution()`
 - `ModelVar.requires_integrality()`
+- `lm.ModelPrepareOptions`, `lm.PreparedModel.from_file(...)`
+- `lm.ModelBuilder.add_var(...)`, `add_con(...)`, and `prepare(...)`
+
+## Shared model, multiple Python workers
+
+`LocalMIP(prepared_model)` keeps the frozen model alive and shares it without copying. Each solver has independent RNG and search state:
+
+```python
+import threading
+import localmip_py as lm
+
+options = lm.ModelPrepareOptions()
+model = lm.PreparedModel.from_file("instance.mps", options)
+solvers = [lm.LocalMIP(model) for _ in range(4)]
+
+for seed, solver in enumerate(solvers, start=1):
+    solver.set_random_seed(seed)
+    solver.set_time_limit(10.0)
+    solver.set_log_obj(False)
+
+workers = [threading.Thread(target=solver.run) for solver in solvers]
+for worker in workers:
+    worker.start()
+for worker in workers:
+    worker.join()
+```
+
+`run()` releases the GIL, so independent searches can execute concurrently. Python callbacks reacquire the GIL, so callback-heavy searches may serialize while callbacks run. Local-MIP does not create Python threads or merge results; the application schedules the workers and selects the final incumbent.
+
+Each `LocalMIP` object accepts exactly one `run()` call, including a call that ends by throwing an exception. Create another solver for a new seed or model; multiple solvers can reuse the same `PreparedModel`.
 
 ## Notes
 - `pip install ./python-bindings` compiles the Local-MIP core and the extension together inside the wheel build.

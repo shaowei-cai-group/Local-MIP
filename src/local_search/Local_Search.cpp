@@ -183,7 +183,8 @@ void Local_Search::apply_move(size_t p_var_idx, double p_delta)
     return;
   assert(p_var_idx < m_var_num);
   auto& model_var = m_model_manager->var(p_var_idx);
-  if (!model_var.in_bound(m_var_current_value[p_var_idx] + p_delta))
+  if (!m_model_manager->var_in_bound(
+          model_var, m_var_current_value[p_var_idx] + p_delta))
   {
     p_delta = std::clamp(
         p_delta,
@@ -240,7 +241,8 @@ void Local_Search::apply_move(size_t p_var_idx, double p_delta)
   m_current_obj_breakthrough = m_con_activity[0] <= m_con_constant[0];
   if (m_con_unsat_idxs.size() < m_min_unsat_con)
     m_min_unsat_con = m_con_unsat_idxs.size();
-  assert(model_var.in_bound(m_var_current_value[p_var_idx]));
+  assert(m_model_manager->var_in_bound(model_var,
+                                       m_var_current_value[p_var_idx]));
 }
 
 double Local_Search::checked_move_value(size_t p_var_idx,
@@ -263,7 +265,7 @@ double Local_Search::checked_move_value(size_t p_var_idx,
                        " result is not finite for variable '" +
                        model_var.name() + "'");
   double new_value = candidate_value;
-  if (!model_var.try_normalize_value(new_value))
+  if (!m_model_manager->normalize_var_value(model_var, new_value))
   {
     std::ostringstream oss;
     oss << p_source << " violates variable domain for '"
@@ -301,7 +303,7 @@ bool Local_Search::verify_solution() const
     double gap = static_cast<double>(activity) - m_con_constant[con_idx];
     if (m_con_is_equality[con_idx])
     {
-      if (std::fabs(gap) > k_feas_tolerance)
+      if (std::fabs(gap) > m_model_manager->feas_tolerance())
       {
         printf("c %s activity[%.15g] = constant[%.15g]\n",
                model_con.name().c_str(),
@@ -312,7 +314,7 @@ bool Local_Search::verify_solution() const
     }
     else
     {
-      if (gap > k_feas_tolerance)
+      if (gap > m_model_manager->feas_tolerance())
       {
         printf("c %s activity[%.15g] < constant[%.15g]\n",
                model_con.name().c_str(),
@@ -329,7 +331,7 @@ bool Local_Search::verify_solution() const
                  static_cast<long double>(
                      m_var_best_value[model_obj.var_idx(term_idx)]);
   if (std::fabs(static_cast<double>(obj_value) - m_best_obj) >
-      k_opt_tolerance)
+      m_readonly_ctx.m_opt_tolerance)
   {
     printf("c obj_value[%.15g] = best_obj[%.15g]\n",
            static_cast<double>(obj_value) + m_model_manager->obj_offset(),
@@ -418,24 +420,24 @@ bool Local_Search::solve_objective_only()
 {
   if (m_con_num > 1)
     return false;
-  auto is_neg_inf_bound = [](double bound)
-  { return bound <= k_neg_inf + k_feas_tolerance; };
-  auto is_pos_inf_bound = [](double bound)
-  { return bound >= k_inf - k_feas_tolerance; };
+  auto is_neg_inf_bound = [this](double bound)
+  { return bound <= k_neg_inf + m_model_manager->feas_tolerance(); };
+  auto is_pos_inf_bound = [this](double bound)
+  { return bound >= k_inf - m_model_manager->feas_tolerance(); };
   double best_obj = 0.0;
   for (size_t var_idx = 0; var_idx < m_var_num; ++var_idx)
   {
     const auto& model_var = m_model_manager->var(var_idx);
     double coeff = m_var_obj_cost[var_idx];
     double value = 0.0;
-    if (std::fabs(coeff) < k_zero_tolerance)
+    if (is_effectively_zero(coeff, m_model_manager->zero_tolerance()))
     {
       double lower = model_var.lower_bound();
       double upper = model_var.upper_bound();
       value = 0.0;
-      if (value < lower - k_feas_tolerance)
+      if (value < lower - m_model_manager->feas_tolerance())
         value = lower;
-      if (value > upper + k_feas_tolerance)
+      if (value > upper + m_model_manager->feas_tolerance())
         value = upper;
       if (!std::isfinite(value))
       {
@@ -483,7 +485,7 @@ bool Local_Search::solve_objective_only()
       }
       value = upper;
     }
-    if (!model_var.try_normalize_value(value))
+    if (!m_model_manager->normalize_var_value(model_var, value))
     {
       std::ostringstream oss;
       oss << "objective-only solution violates variable domain for '"
@@ -513,7 +515,7 @@ void Local_Search::normalize_domain_values(std::vector<double>& p_values,
     const auto& model_var = m_model_manager->var(var_idx);
     const double original_value = p_values[var_idx];
     double normalized_value = original_value;
-    if (!model_var.try_normalize_value(normalized_value))
+    if (!m_model_manager->normalize_var_value(model_var, normalized_value))
     {
       std::ostringstream oss;
       oss << p_source << " violates variable domain for '"
@@ -549,7 +551,7 @@ bool Local_Search::verify_domain_values(
              value);
       return false;
     }
-    if (!model_var.in_bound(value))
+    if (!m_model_manager->var_in_bound(model_var, value))
     {
       printf("c var %s is out of bound: %.15g\n",
              model_var.name().c_str(),
@@ -557,7 +559,8 @@ bool Local_Search::verify_domain_values(
       return false;
     }
     if (model_var.requires_integrality() &&
-        !is_integral_within_tolerance(value))
+        !is_integral_within_tolerance(value,
+                                      m_model_manager->feas_tolerance()))
     {
       printf("c integer var %s has fractional value: %.15g\n",
              model_var.name().c_str(),
@@ -568,7 +571,8 @@ bool Local_Search::verify_domain_values(
   return true;
 }
 
-Local_Search::Local_Search(const Model_Manager* p_model_manager)
+Local_Search::Local_Search(const Model_Manager* p_model_manager,
+                           double p_opt_tolerance)
     : m_model_manager(p_model_manager),
       m_con_is_equality(p_model_manager->con_is_equality()),
       m_var_obj_cost(p_model_manager->var_obj_cost()),
@@ -605,7 +609,8 @@ Local_Search::Local_Search(const Model_Manager* p_model_manager)
                      m_last_improve_step,
                      m_current_obj_breakthrough,
                      p_model_manager->binary_idx_list(),
-                     p_model_manager->non_fixed_var_idxs()),
+                     p_model_manager->non_fixed_var_idxs(),
+                     p_opt_tolerance),
       m_start_ctx(m_readonly_ctx, m_var_current_value, m_rng),
       m_restart_ctx(m_readonly_ctx,
                     m_var_current_value,
@@ -642,6 +647,11 @@ Local_Search::~Local_Search()
 void Local_Search::terminate() noexcept
 {
   m_terminated.store(true, std::memory_order_relaxed);
+}
+
+void Local_Search::set_opt_tolerance(double p_value) noexcept
+{
+  m_readonly_ctx.m_opt_tolerance = p_value;
 }
 
 void Local_Search::set_sol_path(const std::string& p_sol_path)

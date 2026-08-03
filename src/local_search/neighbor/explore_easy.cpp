@@ -30,6 +30,8 @@ void Neighbor::explore_easy(Neighbor_Ctx& p_ctx)
                   m_bms_op,
                   neighbor_size,
                   p_ctx);
+  const double feas_tolerance =
+      p_ctx.m_shared.m_model_manager.feas_tolerance();
   for (size_t idx = 0; idx < neighbor_size; ++idx)
   {
     size_t var_idx = neighbor_idxs[idx];
@@ -43,8 +45,7 @@ void Neighbor::explore_easy(Neighbor_Ctx& p_ctx)
               p_ctx.m_shared.m_var_current_value[var_idx];
     else
       delta = 0 - p_ctx.m_shared.m_var_current_value[var_idx];
-    if (std::fabs(delta) > k_feas_tolerance &&
-        !tabu(p_ctx, var_idx, delta))
+    if (std::fabs(delta) > feas_tolerance && !tabu(p_ctx, var_idx, delta))
     {
       p_ctx.m_op_var_idxs.push_back(var_idx);
       p_ctx.m_op_var_deltas.push_back(delta);
@@ -56,7 +57,7 @@ void Neighbor::explore_easy(Neighbor_Ctx& p_ctx)
       delta =
           std::midpoint(model_var.lower_bound(), model_var.upper_bound()) -
           p_ctx.m_shared.m_var_current_value[var_idx];
-      if (std::fabs(delta) > k_feas_tolerance &&
+      if (std::fabs(delta) > feas_tolerance &&
           !tabu(p_ctx, var_idx, delta))
       {
         p_ctx.m_op_var_idxs.push_back(var_idx);
@@ -67,7 +68,7 @@ void Neighbor::explore_easy(Neighbor_Ctx& p_ctx)
     {
       delta = model_var.lower_bound() -
               p_ctx.m_shared.m_var_current_value[var_idx];
-      if (std::fabs(delta) > k_feas_tolerance &&
+      if (std::fabs(delta) > feas_tolerance &&
           !tabu(p_ctx, var_idx, delta))
       {
         p_ctx.m_op_var_idxs.push_back(var_idx);
@@ -78,7 +79,7 @@ void Neighbor::explore_easy(Neighbor_Ctx& p_ctx)
     {
       delta = model_var.upper_bound() -
               p_ctx.m_shared.m_var_current_value[var_idx];
-      if (std::fabs(delta) > k_feas_tolerance &&
+      if (std::fabs(delta) > feas_tolerance &&
           !tabu(p_ctx, var_idx, delta))
       {
         p_ctx.m_op_var_idxs.push_back(var_idx);

@@ -45,7 +45,8 @@ void Neighbor::explore_unsat_mtm_bm(Neighbor_Ctx& p_ctx)
               con_idx, term_idx, var_idx, p_ctx);
         if (tabu(p_ctx, var_idx, delta))
           continue;
-        if (std::fabs(delta) < k_zero_tolerance)
+        if (is_effectively_zero(
+                delta, p_ctx.m_shared.m_model_manager.zero_tolerance()))
           continue;
         p_ctx.m_op_var_idxs.push_back(var_idx);
         p_ctx.m_op_var_deltas.push_back(delta);
@@ -62,7 +63,8 @@ void Neighbor::explore_unsat_mtm_bm(Neighbor_Ctx& p_ctx)
       double delta = breakthrough_operation(term_idx, var_idx, p_ctx);
       if (tabu(p_ctx, var_idx, delta))
         continue;
-      if (std::fabs(delta) < k_zero_tolerance)
+      if (is_effectively_zero(
+              delta, p_ctx.m_shared.m_model_manager.zero_tolerance()))
         continue;
       p_ctx.m_op_var_idxs.push_back(var_idx);
       p_ctx.m_op_var_deltas.push_back(delta);

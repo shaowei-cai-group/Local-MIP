@@ -13,7 +13,6 @@
 
 #pragma once
 #include "../utils/global_defs.h"
-#include <cmath>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -66,8 +65,6 @@ public:
   inline void set_rhs(double p_rhs);
 
   inline void set_coeff(size_t p_term_idx, double p_coeff);
-
-  inline bool verify_empty_sat() const;
 
   inline void add_type(Con_Type p_type);
 
@@ -180,14 +177,6 @@ inline bool Model_Con::is_greater() const
 inline bool Model_Con::is_inferred_sat() const
 {
   return m_mark_inferred_sat;
-}
-
-inline bool Model_Con::verify_empty_sat() const
-{
-  if ((!m_is_equality && m_rhs + k_feas_tolerance >= 0) ||
-      (m_is_equality && std::fabs(m_rhs) <= k_feas_tolerance))
-    return true;
-  return false;
 }
 
 inline void Model_Con::add_type(Con_Type p_type)

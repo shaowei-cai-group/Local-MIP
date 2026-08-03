@@ -105,14 +105,15 @@ Sol_Read_Result Sol_Reader::read(const std::string& p_sol_file,
     size_t var_idx = var_iter->second;
     const auto& model_var = p_model_manager.var(var_idx);
     const double input_value = value;
-    if (!model_var.try_normalize_value(value))
+    if (!p_model_manager.normalize_var_value(model_var, value))
     {
       std::ostringstream oss;
       oss << "value '" << value_text << "' for variable '" << name << "' ";
       if (model_var.requires_integrality() &&
-          !is_integral_within_tolerance(input_value))
+          !is_integral_within_tolerance(input_value,
+                                        p_model_manager.feas_tolerance()))
         oss << "violates integrality";
-      else if (!model_var.in_bound(input_value))
+      else if (!p_model_manager.var_in_bound(model_var, input_value))
         oss << "is out of bounds [" << model_var.lower_bound() << ", "
             << model_var.upper_bound() << "]";
       else

@@ -93,7 +93,9 @@ void Scoring::progress_bonus(Neighbor_Ctx& p_ctx,
                              double p_delta) const
 {
   auto& model_var = p_ctx.m_shared.m_model_manager.var(p_var_idx);
-  if (model_var.is_binary())
+  const double feas_tolerance =
+      p_ctx.m_shared.m_model_manager.feas_tolerance();
+  if (model_var.type() == Var_Type::binary)
   {
     if (p_ctx.m_binary_op_stamp[p_var_idx] ==
         p_ctx.m_binary_op_stamp_token)
@@ -135,8 +137,8 @@ void Scoring::progress_bonus(Neighbor_Ctx& p_ctx,
       bool pre_sat;
       if (p_ctx.m_shared.m_con_is_equality[con_idx])
       {
-        pre_sat = std::fabs(pre_gap) <= k_feas_tolerance;
-        bool now_sat = std::fabs(new_gap) <= k_feas_tolerance;
+        pre_sat = std::fabs(pre_gap) <= feas_tolerance;
+        bool now_sat = std::fabs(new_gap) <= feas_tolerance;
         if (!pre_sat && now_sat)
           neighbor_score += scaled_con_weight * 2;
         else if (pre_sat && !now_sat)
@@ -151,8 +153,8 @@ void Scoring::progress_bonus(Neighbor_Ctx& p_ctx,
       }
       else
       {
-        pre_sat = pre_gap <= k_feas_tolerance;
-        bool now_sat = new_gap <= k_feas_tolerance;
+        pre_sat = pre_gap <= feas_tolerance;
+        bool now_sat = new_gap <= feas_tolerance;
         if (!pre_sat && now_sat)
           neighbor_score += scaled_con_weight;
         else if (pre_sat && !now_sat)
@@ -189,7 +191,9 @@ void Scoring::progress_age(Neighbor_Ctx& p_ctx,
                            double p_delta) const
 {
   auto& model_var = p_ctx.m_shared.m_model_manager.var(p_var_idx);
-  if (model_var.is_binary())
+  const double feas_tolerance =
+      p_ctx.m_shared.m_model_manager.feas_tolerance();
+  if (model_var.type() == Var_Type::binary)
   {
     if (p_ctx.m_binary_op_stamp[p_var_idx] ==
         p_ctx.m_binary_op_stamp_token)
@@ -228,8 +232,8 @@ void Scoring::progress_age(Neighbor_Ctx& p_ctx,
       bool pre_sat;
       if (p_ctx.m_shared.m_con_is_equality[con_idx])
       {
-        pre_sat = std::fabs(pre_gap) <= k_feas_tolerance;
-        bool now_sat = std::fabs(new_gap) <= k_feas_tolerance;
+        pre_sat = std::fabs(pre_gap) <= feas_tolerance;
+        bool now_sat = std::fabs(new_gap) <= feas_tolerance;
         if (!pre_sat && now_sat)
           neighbor_score += scaled_con_weight * 2;
         else if (pre_sat && !now_sat)
@@ -244,8 +248,8 @@ void Scoring::progress_age(Neighbor_Ctx& p_ctx,
       }
       else
       {
-        pre_sat = pre_gap <= k_feas_tolerance;
-        bool now_sat = new_gap <= k_feas_tolerance;
+        pre_sat = pre_gap <= feas_tolerance;
+        bool now_sat = new_gap <= feas_tolerance;
         if (!pre_sat && now_sat)
           neighbor_score += scaled_con_weight;
         else if (pre_sat && !now_sat)

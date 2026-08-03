@@ -2,7 +2,7 @@
 
     Filename:     Model_Reader.h
 
-    Description:  Base class interface for model file readers
+    Description:  Unified model file reading entry point
         Version:  2.0
 
     Author:       Peng Lin, peng.lin.csor@gmail.com
@@ -13,10 +13,9 @@
 
 #pragma once
 
-class Model_Reader
-{
-public:
-  virtual ~Model_Reader() = default;
+#include <string>
 
-  virtual void read(const char* p_model_file) = 0;
-};
+class Model_Manager;
+
+void read_model_file(const std::string& p_model_file,
+                     Model_Manager& p_model_manager);

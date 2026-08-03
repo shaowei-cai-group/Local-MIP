@@ -12,8 +12,10 @@
 =====================================================================================*/
 
 #pragma once
+#include "../model_data/Prepared_Model.h"
 #include "../utils/global_defs.h"
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -30,8 +32,6 @@ public:
   };
 
   Model_API();
-
-  ~Model_API();
 
   void set_sense(Sense p_sense);
 
@@ -65,16 +65,17 @@ public:
 
   bool set_integrality(const std::string& p_name, Var_Type p_type);
 
-  void build_model(Model_Manager& p_model_manager);
+  std::shared_ptr<const Prepared_Model>
+  prepare(const Model_Prepare_Options& p_options = {}) const;
 
   inline size_t get_num_vars() const
   {
-    return m_var_num;
+    return m_vars.size();
   }
 
   inline size_t get_num_cons() const
   {
-    return m_con_num;
+    return m_cons.size();
   }
 
 private:
@@ -105,18 +106,19 @@ private:
 
   std::unordered_map<std::string, int> m_var_name_to_idx;
 
-  size_t m_var_num;
-
-  size_t m_con_num;
-
   int get_var_idx(const std::string& p_name) const;
 
   bool is_valid_var_idx(int p_idx) const;
 
   bool is_valid_con_idx(int p_idx) const;
 
-  void add_vars_to_constraint(const ConData& con,
-                              size_t con_idx,
-                              Model_Manager& p_model_manager,
-                              const std::vector<size_t>& api_to_mgr_idx);
+  void validate_for_prepare() const;
+
+  void populate_model(Model_Manager& p_model_manager) const;
+
+  void
+  inner_add_vars_to_cons(const ConData& con,
+                         size_t con_idx,
+                         Model_Manager& p_model_manager,
+                         const std::vector<size_t>& api_to_mgr_idx) const;
 };

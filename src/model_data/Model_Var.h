@@ -21,6 +21,8 @@
 class Model_Var
 {
 private:
+  friend class Model_Manager;
+
   std::string m_name;
 
   size_t m_idx;
@@ -37,8 +39,6 @@ private:
 
   bool m_requires_integrality;
 
-  void normalize_integral_bounds();
-
 public:
   Model_Var(const std::string& p_name,
             size_t p_idx,
@@ -46,31 +46,15 @@ public:
 
   ~Model_Var();
 
-  void set_type(Var_Type p_var_type);
-
   inline void add_con(const size_t p_con_idx, const size_t p_pos_in_con);
 
-  void set_upper_bound(double p_upper_bound);
-
-  void set_lower_bound(double p_lower_bound);
-
-  bool try_canonicalize_bounds();
-
   void set_pos_in_con(const size_t p_term_idx, const size_t p_pos_in_con);
-
-  inline bool in_bound(double p_value) const;
-
-  inline bool is_fixed() const;
-
-  inline bool is_binary() const;
 
   inline bool is_real() const;
 
   inline bool is_general_integer() const;
 
   inline bool requires_integrality() const;
-
-  bool try_normalize_value(double& p_value) const;
 
   inline size_t term_num() const;
 
@@ -90,25 +74,6 @@ public:
 
   inline const std::string& name() const;
 };
-
-inline bool Model_Var::in_bound(double p_value) const
-{
-  return m_lower_bound - k_feas_tolerance <= p_value &&
-         p_value <= m_upper_bound + k_feas_tolerance;
-}
-
-inline bool Model_Var::is_fixed() const
-{
-  return std::fabs(m_lower_bound - m_upper_bound) < k_feas_tolerance;
-}
-
-inline bool Model_Var::is_binary() const
-{
-  return m_type == Var_Type::binary ||
-         (m_type == Var_Type::general_integer &&
-          std::fabs(m_lower_bound - 0.0) < k_feas_tolerance &&
-          std::fabs(m_upper_bound - 1.0) < k_feas_tolerance);
-}
 
 inline bool Model_Var::is_real() const
 {

@@ -16,13 +16,16 @@
 
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -36,11 +39,12 @@
 #include "local_search/scoring/scoring.h"
 #include "local_search/start/start.h"
 #include "local_search/weight/weight.h"
-#include "reader/LP_Reader.h"
-#include "reader/MPS_Reader.h"
+#include "reader/Model_Reader.h"
 #undef private
 #undef protected
+#include "model_api/Model_Builder.h"
 #include "utils/paras.h"
+#include "utils/solver_error.h"
 
 namespace
 {
@@ -55,16 +59,22 @@ bool check(bool condition, const char* message)
   return true;
 }
 
+std::shared_ptr<const Prepared_Model>
+prepare_model(const Model_Builder& p_builder, int p_bound_strengthen = 1)
+{
+  Model_Prepare_Options options;
+  options.bound_strengthen = p_bound_strengthen;
+  return p_builder.prepare(options);
+}
+
 bool test_constructor_defaults()
 {
   Local_MIP solver;
   bool ok = true;
-  ok &= check(solver.m_model_manager != nullptr,
+  ok &= check(solver.get_model_manager() != nullptr,
               "model manager should be constructed");
   ok &= check(solver.m_local_search != nullptr,
               "local search should be constructed");
-  ok &= check(solver.m_reader == nullptr,
-              "reader should be null before prepare_reader()");
   ok &= check(solver.m_model_file.empty(),
               "model file should be empty by default");
   ok &= check(solver.m_start_sol_path.empty(),
@@ -77,7 +87,9 @@ bool test_constructor_defaults()
               "solution path should be empty by default");
   ok &= check(solver.m_log_obj_enabled,
               "log obj should be enabled by default");
-  ok &= check(solver.m_model_manager->m_split_eq,
+  ok &= check(!solver.m_run_started,
+              "solver should not be marked as run before run()");
+  ok &= check(solver.get_model_manager()->m_split_eq,
               "split equality conversion should be enabled by default");
   return ok;
 }
@@ -96,11 +108,11 @@ bool test_basic_setters()
               "set_time_limit should store the provided value");
 
   solver.set_bound_strengthen(false);
-  ok &= check(!solver.m_model_manager->m_bound_strengthen,
+  ok &= check(!solver.get_model_manager()->m_bound_strengthen,
               "set_bound_strengthen should forward to model manager");
 
   solver.set_split_eq(false);
-  ok &= check(!solver.m_model_manager->m_split_eq,
+  ok &= check(!solver.get_model_manager()->m_split_eq,
               "set_split_eq should update model manager flag");
 
   solver.set_log_obj(true);
@@ -221,22 +233,60 @@ bool test_basic_setters()
   return ok;
 }
 
-bool test_prepare_reader_selection()
+bool test_model_file_reader()
 {
-  Local_MIP solver;
   bool ok = true;
 
-  solver.set_model_file(TEST_MPS_PATH);
-  solver.prepare_reader();
-  ok &= check(solver.m_reader != nullptr,
-              "prepare_reader should allocate a reader");
-  ok &= check(dynamic_cast<MPS_Reader*>(solver.m_reader.get()) != nullptr,
-              "prepare_reader should pick MPS reader for .mps files");
+  Model_Manager mps_manager;
+  read_model_file(TEST_MPS_PATH, mps_manager);
+  ok &= check(mps_manager.process_after_read() &&
+                  mps_manager.var_num() > 0,
+              "model file reader should load MPS files");
 
-  solver.set_model_file(TEST_LP_PATH);
-  solver.prepare_reader();
-  ok &= check(dynamic_cast<LP_Reader*>(solver.m_reader.get()) != nullptr,
-              "prepare_reader should pick LP reader for .lp files");
+  Model_Manager lp_manager;
+  read_model_file(TEST_LP_PATH, lp_manager);
+  ok &= check(lp_manager.process_after_read() &&
+                  lp_manager.var_num() > 0,
+              "model file reader should load LP files");
+
+  const std::filesystem::path uppercase_path =
+      "tmp_model_reader_uppercase.MPS";
+  std::filesystem::copy_file(
+      TEST_MPS_PATH,
+      uppercase_path,
+      std::filesystem::copy_options::overwrite_existing);
+  Model_Manager uppercase_manager;
+  read_model_file(uppercase_path.string(), uppercase_manager);
+  std::filesystem::remove(uppercase_path);
+  ok &= check(uppercase_manager.process_after_read() &&
+                  uppercase_manager.var_num() > 0,
+              "model file reader should accept uppercase extensions");
+
+  bool empty_path_rejected = false;
+  try
+  {
+    Model_Manager manager;
+    read_model_file("", manager);
+  }
+  catch (const Solver_Error&)
+  {
+    empty_path_rejected = true;
+  }
+  ok &= check(empty_path_rejected,
+              "model file reader should reject an empty path");
+
+  bool unsupported_format_rejected = false;
+  try
+  {
+    Model_Manager manager;
+    read_model_file("instance.txt", manager);
+  }
+  catch (const Solver_Error&)
+  {
+    unsupported_format_rejected = true;
+  }
+  ok &= check(unsupported_format_rejected,
+              "model file reader should reject unknown extensions");
 
   return ok;
 }
@@ -270,14 +320,13 @@ bool test_run_with_timeout()
 
 bool test_concurrent_user_termination()
 {
-  Local_MIP solver;
-  solver.enable_model_api();
-  int x = solver.add_var("x", 0.0, 1.0, 0.0, Var_Type::binary);
-  solver.add_con(
+  Model_Builder builder;
+  int x = builder.add_var("x", 0.0, 1.0, 0.0, Var_Type::binary);
+  builder.add_con(
       1.0, k_inf, std::vector<int>{x}, std::vector<double>{1.0});
-  solver.add_con(
+  builder.add_con(
       k_neg_inf, 0.0, std::vector<int>{x}, std::vector<double>{1.0});
-  solver.set_bound_strengthen(0);
+  Local_MIP solver(prepare_model(builder, 0));
   solver.set_time_limit(10.0);
 
   std::thread terminator(
@@ -305,6 +354,128 @@ bool test_concurrent_user_termination()
   ok &= check(!solver.m_timeout_thread.joinable() &&
                   !solver.m_obj_log_thread.joinable(),
               "Run thread should own and join background threads");
+  return ok;
+}
+
+bool test_one_shot_run_guard()
+{
+  Local_MIP solver;
+  solver.set_model_file(TEST_MPS_PATH);
+  solver.set_bound_strengthen(0);
+  solver.set_time_limit(5.0);
+  solver.set_log_obj(false);
+
+  std::mutex gate_mutex;
+  std::condition_variable gate_cv;
+  bool callback_entered = false;
+  bool release_callback = false;
+  solver.set_start_cbk(
+      [&](Start::Start_Ctx&, void*)
+      {
+        std::unique_lock<std::mutex> lock(gate_mutex);
+        callback_entered = true;
+        gate_cv.notify_all();
+        gate_cv.wait(lock, [&]() { return release_callback; });
+      });
+
+  std::exception_ptr worker_error;
+  std::thread worker(
+      [&]()
+      {
+        try
+        {
+          solver.run();
+        }
+        catch (...)
+        {
+          worker_error = std::current_exception();
+        }
+      });
+
+  bool ok = true;
+  bool entered = false;
+  {
+    std::unique_lock<std::mutex> lock(gate_mutex);
+    entered = gate_cv.wait_for(
+        lock,
+        std::chrono::seconds(10),
+        [&]() { return callback_entered; });
+    if (!entered)
+      release_callback = true;
+  }
+  if (!entered)
+  {
+    solver.terminate();
+    gate_cv.notify_all();
+    worker.join();
+    return check(false, "Start callback should gate the active run");
+  }
+
+  bool second_run_rejected = false;
+  try
+  {
+    solver.run();
+  }
+  catch (const std::logic_error& error)
+  {
+    second_run_rejected =
+        std::string(error.what()).find("only be called once") !=
+        std::string::npos;
+  }
+  ok &= check(second_run_rejected,
+              "A second run() on one solver should be rejected");
+
+  bool concurrent_setter_rejected = false;
+  try
+  {
+    solver.set_random_seed(99);
+  }
+  catch (const std::logic_error& error)
+  {
+    concurrent_setter_rejected =
+        std::string(error.what()).find("after run() has started") !=
+        std::string::npos;
+  }
+  ok &= check(concurrent_setter_rejected,
+              "Configuration changes during run() should be rejected");
+
+  solver.terminate();
+  {
+    std::lock_guard<std::mutex> lock(gate_mutex);
+    release_callback = true;
+  }
+  gate_cv.notify_all();
+  worker.join();
+  ok &= check(worker_error == nullptr,
+              "The original run should complete without an exception");
+
+  bool sequential_run_rejected = false;
+  try
+  {
+    solver.run();
+  }
+  catch (const std::logic_error& error)
+  {
+    sequential_run_rejected =
+        std::string(error.what()).find("only be called once") !=
+        std::string::npos;
+  }
+  ok &= check(sequential_run_rejected,
+              "Sequential run() reuse should be rejected");
+
+  bool post_run_setter_rejected = false;
+  try
+  {
+    solver.set_random_seed(99);
+  }
+  catch (const std::logic_error& error)
+  {
+    post_run_setter_rejected =
+        std::string(error.what()).find("after run() has started") !=
+        std::string::npos;
+  }
+  ok &= check(post_run_setter_rejected,
+              "Configuration changes after run() should be rejected");
   return ok;
 }
 
@@ -497,7 +668,7 @@ bool test_library_parameter_file_loading()
               "set_param_set_file should apply objective start");
   ok &= check(solver.m_local_search->m_tabu_base == 7,
               "set_param_set_file should apply tabu_base");
-  ok &= check(solver.m_model_manager->m_split_eq,
+  ok &= check(solver.get_model_manager()->m_split_eq,
               "set_param_set_file should apply split_eq");
   ok &= check(solver.m_local_search->m_bms_sat_con == 41,
               "set_param_set_file should not reset unspecified values");
@@ -638,9 +809,9 @@ bool test_integrality_guards()
 
   {
     const double inf = std::numeric_limits<double>::infinity();
-    Local_MIP solver;
-    solver.enable_model_api();
-    int x = solver.add_var("x", -inf, inf, 0.0, Var_Type::real);
+    Model_Builder builder;
+    int x = builder.add_var("x", -inf, inf, 0.0, Var_Type::real);
+    Local_MIP solver(prepare_model(builder));
     solver.set_log_obj(false);
     solver.run();
 
@@ -654,11 +825,13 @@ bool test_integrality_guards()
   }
 
   {
-    Local_MIP solver;
-    solver.enable_model_api();
-    int x = solver.add_var("x", 0.0, 1.0, 0.0, Var_Type::binary);
-    solver.add_con(k_neg_inf, 1.0, std::vector<int>{x},
-                   std::vector<double>{1.0});
+    Model_Builder builder;
+    int x = builder.add_var("x", 0.0, 1.0, 0.0, Var_Type::binary);
+    builder.add_con(k_neg_inf,
+                    1.0,
+                    std::vector<int>{x},
+                    std::vector<double>{1.0});
+    Local_MIP solver(prepare_model(builder));
     solver.set_start_cbk(
         [x](Start::Start_Ctx& ctx, void*)
         { ctx.m_var_current_value[x] = 0.5; });
@@ -681,21 +854,36 @@ bool test_integrality_guards()
     ok &= check(solver.m_cancel_timeout &&
                     !solver.m_timeout_thread.joinable(),
                 "Callback validation errors should clean up timeout thread");
+    ok &= check(solver.m_run_started,
+                "A failed run should still consume the one-shot solver");
+    bool rerun_rejected = false;
+    try
+    {
+      solver.run();
+    }
+    catch (const std::logic_error& error)
+    {
+      rerun_rejected =
+          std::string(error.what()).find("only be called once") !=
+          std::string::npos;
+    }
+    ok &= check(rerun_rejected,
+                "A failed run should not permit solver reuse");
   }
 
-  Local_MIP valid_solver;
-  valid_solver.enable_model_api();
-  int x = valid_solver.add_var(
+  Model_Builder valid_builder;
+  int x = valid_builder.add_var(
       "x", 0.0, 1.0, 0.0, Var_Type::binary);
-  valid_solver.add_con(k_neg_inf,
-                       1.0,
-                       std::vector<int>{x},
-                       std::vector<double>{1.0});
+  valid_builder.add_con(k_neg_inf,
+                        1.0,
+                        std::vector<int>{x},
+                        std::vector<double>{1.0});
+  Local_MIP valid_solver(prepare_model(valid_builder));
   valid_solver.set_start_cbk(
       [x](Start::Start_Ctx& ctx, void*)
       {
         ctx.m_var_current_value[x] =
-            1.0 - 0.5 * k_feas_tolerance;
+            1.0 - 0.5 * k_default_feas_tolerance;
       });
   valid_solver.set_log_obj(false);
   valid_solver.run();
@@ -713,7 +901,8 @@ bool test_integrality_guards()
         static_cast<size_t>(x), delta, "selected neighbor move");
   };
 
-  apply_validated_neighbor_move(1.0 - 0.5 * k_feas_tolerance);
+  apply_validated_neighbor_move(
+      1.0 - 0.5 * k_default_feas_tolerance);
   ok &= check(valid_solver.m_local_search->m_var_current_value[x] == 1.0,
               "Accepted integer move should store an exact integer value");
 
@@ -879,14 +1068,14 @@ bool test_integrality_guards()
               "Invalid scoring callback selection should fail only at apply");
 
   {
-    Local_MIP lift_solver;
-    lift_solver.enable_model_api();
-    int lift_x = lift_solver.add_var(
+    Model_Builder builder;
+    int lift_x = builder.add_var(
         "x", 0.0, 1.0, 1.0, Var_Type::binary);
-    lift_solver.add_con(k_neg_inf,
-                        1.0,
-                        std::vector<int>{lift_x},
-                        std::vector<double>{1.0});
+    builder.add_con(k_neg_inf,
+                    1.0,
+                    std::vector<int>{lift_x},
+                    std::vector<double>{1.0});
+    Local_MIP lift_solver(prepare_model(builder));
     lift_solver.set_time_limit(0.05);
     lift_solver.set_log_obj(false);
     lift_solver.run();
@@ -915,17 +1104,16 @@ bool test_integrality_guards()
   }
 
   {
-    Local_MIP huge_integer_solver;
-    huge_integer_solver.enable_model_api();
     const double lower = 1e19;
     const double upper = lower + 1e6;
-    int huge_x = huge_integer_solver.add_var(
+    Model_Builder builder;
+    int huge_x = builder.add_var(
         "huge", lower, upper, 0.0, Var_Type::general_integer);
-    huge_integer_solver.add_con(k_neg_inf,
-                                upper,
-                                std::vector<int>{huge_x},
-                                std::vector<double>{1.0});
-    huge_integer_solver.set_bound_strengthen(0);
+    builder.add_con(k_neg_inf,
+                    upper,
+                    std::vector<int>{huge_x},
+                    std::vector<double>{1.0});
+    Local_MIP huge_integer_solver(prepare_model(builder, 0));
     huge_integer_solver.set_start_method("random");
     huge_integer_solver.set_log_obj(false);
     huge_integer_solver.run();
@@ -935,20 +1123,22 @@ bool test_integrality_guards()
         huge_integer_solver.get_model_manager()->var(huge_x);
     ok &= check(!fits_in_long_long(lower) && !fits_in_long_long(upper),
                 "Huge integer bounds should not be cast to long long");
-    ok &= check(model_var.in_bound(search->m_var_current_value[huge_x]),
+    ok &= check(huge_integer_solver.get_model_manager()->var_in_bound(
+                    model_var, search->m_var_current_value[huge_x]),
                 "Random start should keep huge integers in their domain");
     search->m_is_found_feasible = false;
     const double restart_value =
         search->m_restart.sample_random_value(search->m_restart_ctx,
                                               model_var);
     ok &= check(std::isfinite(restart_value) &&
-                    model_var.in_bound(restart_value),
+                    huge_integer_solver.get_model_manager()->var_in_bound(
+                        model_var, restart_value),
                 "Restart should safely handle integer bounds above LLONG_MAX");
   }
 
   const char* invalid_output_file = "tmp_invalid_integer_output.sol";
   std::remove(invalid_output_file);
-  valid_solver.set_sol_path(invalid_output_file);
+  valid_solver.m_local_search->m_sol_path = invalid_output_file;
   valid_solver.m_local_search->m_var_best_value[x] = 0.5;
   valid_solver.m_local_search->m_is_found_feasible = true;
   valid_solver.m_local_search->write_sol();
@@ -966,19 +1156,18 @@ bool test_integrality_guards()
   }
 
   {
-    Local_MIP restart_solver;
-    restart_solver.enable_model_api();
-    int restart_x = restart_solver.add_var(
+    Model_Builder builder;
+    int restart_x = builder.add_var(
         "x", 0.0, 1.0, 0.0, Var_Type::binary);
-    restart_solver.add_con(1.0,
-                           k_inf,
-                           std::vector<int>{restart_x},
-                           std::vector<double>{1.0});
-    restart_solver.add_con(k_neg_inf,
-                           0.0,
-                           std::vector<int>{restart_x},
-                           std::vector<double>{1.0});
-    restart_solver.set_bound_strengthen(0);
+    builder.add_con(1.0,
+                    k_inf,
+                    std::vector<int>{restart_x},
+                    std::vector<double>{1.0});
+    builder.add_con(k_neg_inf,
+                    0.0,
+                    std::vector<int>{restart_x},
+                    std::vector<double>{1.0});
+    Local_MIP restart_solver(prepare_model(builder, 0));
     restart_solver.set_restart_step(1);
     restart_solver.set_restart_cbk(
         [restart_x](Restart::Restart_Ctx& ctx, void*)
@@ -1030,20 +1219,20 @@ bool test_integrality_guards()
   std::fprintf(fp, "x 0\n");
   std::fclose(fp);
 
-  Local_MIP partial_solver;
-  partial_solver.enable_model_api();
-  int partial_x = partial_solver.add_var(
+  Model_Builder partial_builder;
+  int partial_x = partial_builder.add_var(
       "x", 0.0, 1.0, 0.0, Var_Type::binary);
-  int y = partial_solver.add_var(
+  int y = partial_builder.add_var(
       "y", 2.0, 3.0, 0.0, Var_Type::general_integer);
-  partial_solver.add_con(k_neg_inf,
-                         1.0,
-                         std::vector<int>{partial_x},
-                         std::vector<double>{1.0});
-  partial_solver.add_con(k_neg_inf,
-                         3.0,
-                         std::vector<int>{y},
-                         std::vector<double>{1.0});
+  partial_builder.add_con(k_neg_inf,
+                          1.0,
+                          std::vector<int>{partial_x},
+                          std::vector<double>{1.0});
+  partial_builder.add_con(k_neg_inf,
+                          3.0,
+                          std::vector<int>{y},
+                          std::vector<double>{1.0});
+  Local_MIP partial_solver(prepare_model(partial_builder));
   partial_solver.set_start_sol_path(partial_file);
   partial_solver.set_log_obj(false);
   partial_solver.run();
@@ -1063,9 +1252,10 @@ int main()
   bool ok = true;
   ok &= test_constructor_defaults();
   ok &= test_basic_setters();
-  ok &= test_prepare_reader_selection();
+  ok &= test_model_file_reader();
   ok &= test_run_with_timeout();
   ok &= test_concurrent_user_termination();
+  ok &= test_one_shot_run_guard();
   ok &= test_invalid_numeric_setters();
   ok &= test_parameter_file_loading();
   ok &= test_library_parameter_file_loading();

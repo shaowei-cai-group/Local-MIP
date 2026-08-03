@@ -113,7 +113,7 @@ void Restart::random_restart(Restart_Ctx& p_ctx) const
     const auto& model_var = p_ctx.m_shared.m_model_manager.var(var_idx);
     double value = sample_random_value(p_ctx, model_var);
     p_ctx.m_var_current_value[var_idx] = value;
-    assert(model_var.in_bound(value));
+    assert(p_ctx.m_shared.m_model_manager.var_in_bound(model_var, value));
   }
   reset_weights(p_ctx);
 }
@@ -134,7 +134,7 @@ void Restart::best_restart(Restart_Ctx& p_ctx) const
     double upper = model_var.upper_bound();
     value = std::clamp(value, lower, upper);
     p_ctx.m_var_current_value[var_idx] = value;
-    assert(model_var.in_bound(value));
+    assert(p_ctx.m_shared.m_model_manager.var_in_bound(model_var, value));
   }
   reset_weights(p_ctx);
 }
@@ -159,7 +159,7 @@ void Restart::hybrid_restart(Restart_Ctx& p_ctx) const
     double value =
         probability(p_ctx.m_rng) < 0.5 ? best_value : random_value;
     p_ctx.m_var_current_value[var_idx] = value;
-    assert(model_var.in_bound(value));
+    assert(p_ctx.m_shared.m_model_manager.var_in_bound(model_var, value));
   }
   reset_weights(p_ctx);
 }
@@ -172,9 +172,9 @@ double Restart::sample_random_value(Restart_Ctx& p_ctx,
   bool has_finite_lower = lower > k_neg_inf * 0.5;
   bool has_finite_upper = upper < k_inf * 0.5;
   double value = 0.0;
-  if (p_model_var.is_fixed())
+  if (p_model_var.type() == Var_Type::fixed)
     value = lower;
-  else if (p_model_var.is_binary())
+  else if (p_model_var.type() == Var_Type::binary)
   {
     std::uniform_int_distribution<int> distribution(0, 1);
     value = static_cast<double>(distribution(p_ctx.m_rng));
@@ -182,8 +182,8 @@ double Restart::sample_random_value(Restart_Ctx& p_ctx,
   else if (p_model_var.is_general_integer())
   {
     const bool can_sample_with_long_long =
-        has_finite_lower && has_finite_upper &&
-        fits_in_long_long(lower) && fits_in_long_long(upper);
+        has_finite_lower && has_finite_upper && fits_in_long_long(lower) &&
+        fits_in_long_long(upper);
     if (can_sample_with_long_long)
     {
       long long lower_int = static_cast<long long>(std::ceil(lower));
@@ -202,7 +202,7 @@ double Restart::sample_random_value(Restart_Ctx& p_ctx,
                      upper);
     else if (has_finite_lower && has_finite_upper)
     {
-      if (p_model_var.in_bound(0.0))
+      if (p_ctx.m_shared.m_model_manager.var_in_bound(p_model_var, 0.0))
         value = 0.0;
       else
         value = lower > 0.0 ? lower : upper;

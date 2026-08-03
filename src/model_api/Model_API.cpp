@@ -12,21 +12,17 @@
 =====================================================================================*/
 
 #include "../model_data/Model_Manager.h"
+#include "../model_data/Prepared_Model.h"
 #include "../utils/global_defs.h"
 #include "../utils/solver_error.h"
 #include "Model_API.h"
 #include <cmath>
 #include <cstdio>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
-Model_API::Model_API()
-    : m_sense(Sense::minimize), m_obj_offset(0.0), m_var_num(0),
-      m_con_num(0)
-{
-}
-
-Model_API::~Model_API()
+Model_API::Model_API() : m_sense(Sense::minimize), m_obj_offset(0.0)
 {
 }
 
@@ -74,7 +70,6 @@ int Model_API::add_var(const std::string& p_name,
   var_data.m_cost = p_cost;
   var_data.m_type = p_type;
   m_vars.push_back(var_data);
-  m_var_num++;
   return var_idx;
 }
 
@@ -120,10 +115,10 @@ int Model_API::add_con(double p_lb,
       return -1;
     }
   }
-  if (p_lb > p_ub + k_feas_tolerance)
+  if (p_lb > p_ub)
   {
     fprintf(stderr,
-            "Error: Constraint lower bound %g > upper bound %g\n",
+            "Error: Constraint lower bound %.15g > upper bound %.15g\n",
             p_lb,
             p_ub);
     return -1;
@@ -135,7 +130,6 @@ int Model_API::add_con(double p_lb,
   con_data.m_coefs = p_coefs;
   int con_idx = static_cast<int>(m_cons.size());
   m_cons.push_back(con_data);
-  m_con_num++;
   return con_idx;
 }
 
@@ -234,18 +228,18 @@ bool Model_API::is_valid_con_idx(int p_idx) const
   return p_idx >= 0 && static_cast<size_t>(p_idx) < m_cons.size();
 }
 
-void Model_API::add_vars_to_constraint(
+void Model_API::inner_add_vars_to_cons(
     const ConData& con,
     size_t con_idx,
     Model_Manager& p_model_manager,
-    const std::vector<size_t>& api_to_mgr_idx)
+    const std::vector<size_t>& api_to_mgr_idx) const
 {
   auto& model_con = p_model_manager.con(con_idx);
   for (size_t j = 0; j < con.m_var_indices.size(); ++j)
   {
     int api_idx = con.m_var_indices[j];
     double coef = con.m_coefs[j];
-    if (std::fabs(coef) < k_zero_tolerance)
+    if (is_effectively_zero(coef, p_model_manager.zero_tolerance()))
       continue;
     size_t mgr_idx = api_to_mgr_idx[api_idx];
     auto& model_var = p_model_manager.var(mgr_idx);
@@ -254,15 +248,11 @@ void Model_API::add_vars_to_constraint(
   }
 }
 
-void Model_API::build_model(Model_Manager& p_model_manager)
+void Model_API::populate_model(Model_Manager& p_model_manager) const
 {
-  if (p_model_manager.var_num() != 0 || p_model_manager.con_num() != 0)
-    throw Solver_Error("Model_API::build_model: Model_Manager must be "
-                       "empty; build once and "
-                       "run once");
   printf("Building model with %zu variables and %zu constraints...\n",
-         m_var_num,
-         m_con_num);
+         m_vars.size(),
+         m_cons.size());
   if (m_sense == Sense::maximize)
     p_model_manager.setup_max();
   if (m_obj_offset != 0.0)
@@ -281,17 +271,17 @@ void Model_API::build_model(Model_Manager& p_model_manager)
     const double lower_bound =
         var.m_lb <= k_neg_inf ? k_neg_inf : var.m_lb;
     const double upper_bound = var.m_ub >= k_inf ? k_inf : var.m_ub;
-    model_var.set_lower_bound(lower_bound);
-    model_var.set_upper_bound(upper_bound);
+    p_model_manager.set_var_lower_bound(model_var, lower_bound);
+    p_model_manager.set_var_upper_bound(model_var, upper_bound);
     if (var.m_type == Var_Type::binary)
-      model_var.set_type(Var_Type::binary);
+      p_model_manager.set_var_type(model_var, Var_Type::binary);
     else if (var.m_type == Var_Type::general_integer)
-      model_var.set_type(Var_Type::general_integer);
+      p_model_manager.set_var_type(model_var, Var_Type::general_integer);
     else if (var.m_type == Var_Type::real)
-      model_var.set_type(Var_Type::real);
+      p_model_manager.set_var_type(model_var, Var_Type::real);
     else if (var.m_type == Var_Type::fixed)
-      model_var.set_type(Var_Type::fixed);
-    if (std::fabs(var.m_cost) > k_zero_tolerance)
+      p_model_manager.set_var_type(model_var, Var_Type::fixed);
+    if (std::fabs(var.m_cost) > p_model_manager.zero_tolerance())
     {
       auto& obj_con = p_model_manager.con(obj_idx);
       model_var.add_con(obj_idx, obj_con.term_num());
@@ -303,17 +293,18 @@ void Model_API::build_model(Model_Manager& p_model_manager)
     const auto& con = m_cons[i];
     if (con.m_var_indices.empty())
       throw Solver_Error(
-          "Model_API::build_model: empty constraints are not supported");
+          "Model_API::prepare: empty constraints are not supported");
     std::string con_name = "__api_c" + std::to_string(i);
     bool lb_is_inf = (con.m_lb <= k_neg_inf);
     bool ub_is_inf = (con.m_ub >= k_inf);
-    if (std::abs(con.m_lb - con.m_ub) < k_feas_tolerance && !lb_is_inf &&
-        !ub_is_inf)
+    if (is_effectively_zero(con.m_lb - con.m_ub,
+                            p_model_manager.feas_tolerance()) &&
+        !lb_is_inf && !ub_is_inf)
     {
       size_t con_idx = p_model_manager.make_con(con_name, '=');
       auto& model_con = p_model_manager.con(con_idx);
       model_con.set_rhs(con.m_ub);
-      add_vars_to_constraint(
+      inner_add_vars_to_cons(
           con, con_idx, p_model_manager, api_to_mgr_idx);
     }
     else
@@ -325,7 +316,7 @@ void Model_API::build_model(Model_Manager& p_model_manager)
         size_t con_idx = p_model_manager.make_con(con_name + "_ub", '<');
         auto& model_con = p_model_manager.con(con_idx);
         model_con.set_rhs(con.m_ub);
-        add_vars_to_constraint(
+        inner_add_vars_to_cons(
             con, con_idx, p_model_manager, api_to_mgr_idx);
       }
       if (!lb_is_inf)
@@ -334,7 +325,7 @@ void Model_API::build_model(Model_Manager& p_model_manager)
         size_t con_idx = p_model_manager.make_con(con_name + "_lb", '>');
         auto& model_con = p_model_manager.con(con_idx);
         model_con.set_rhs(con.m_lb);
-        add_vars_to_constraint(
+        inner_add_vars_to_cons(
             con, con_idx, p_model_manager, api_to_mgr_idx);
       }
       if (!has_constraint)
@@ -345,4 +336,75 @@ void Model_API::build_model(Model_Manager& p_model_manager)
     }
   }
   printf("Model built successfully.\n");
+}
+
+void Model_API::validate_for_prepare() const
+{
+  if (m_vars.empty())
+    throw std::invalid_argument(
+        "model must contain at least one variable");
+  if (m_sense != Sense::minimize && m_sense != Sense::maximize)
+    throw std::invalid_argument("model has an invalid objective sense");
+  if (!std::isfinite(m_obj_offset))
+    throw std::invalid_argument("objective offset must be finite");
+
+  for (const auto& var : m_vars)
+  {
+    if (std::isnan(var.m_lb) || std::isnan(var.m_ub) ||
+        var.m_lb > var.m_ub)
+    {
+      throw std::invalid_argument("variable '" + var.m_name +
+                                  "' has invalid bounds");
+    }
+    if (!std::isfinite(var.m_cost))
+    {
+      throw std::invalid_argument(
+          "variable '" + var.m_name +
+          "' has a non-finite objective coefficient");
+    }
+    if (var.m_type != Var_Type::binary &&
+        var.m_type != Var_Type::general_integer &&
+        var.m_type != Var_Type::real && var.m_type != Var_Type::fixed)
+    {
+      throw std::invalid_argument("variable '" + var.m_name +
+                                  "' has an invalid type");
+    }
+  }
+
+  for (size_t con_idx = 0; con_idx < m_cons.size(); ++con_idx)
+  {
+    const auto& con = m_cons[con_idx];
+    if (std::isnan(con.m_lb) || std::isnan(con.m_ub) ||
+        con.m_lb > con.m_ub)
+    {
+      throw std::invalid_argument("constraint " + std::to_string(con_idx) +
+                                  " has invalid bounds");
+    }
+    for (double coeff : con.m_coefs)
+    {
+      if (!std::isfinite(coeff))
+      {
+        throw std::invalid_argument("constraint " +
+                                    std::to_string(con_idx) +
+                                    " has a non-finite coefficient");
+      }
+    }
+  }
+}
+
+std::shared_ptr<const Prepared_Model>
+Model_API::prepare(const Model_Prepare_Options& p_options) const
+{
+  Prepared_Model::validate_options(p_options);
+  validate_for_prepare();
+  auto manager = std::make_unique<Model_Manager>(p_options.feas_tolerance,
+                                                 p_options.zero_tolerance);
+  manager->set_bound_strengthen(p_options.bound_strengthen);
+  manager->set_split_eq(p_options.split_eq);
+  populate_model(*manager);
+  if (!manager->process_after_read())
+    throw Solver_Error("model is infeasible during preparation");
+
+  return std::shared_ptr<const Prepared_Model>(
+      new Prepared_Model(std::move(manager)));
 }

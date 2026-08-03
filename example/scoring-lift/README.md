@@ -65,7 +65,7 @@ int main()
     bool should_update = false;
 
     // Level 1: Better lift score (significant improvement)
-    if (ctx.m_best_lift_score + k_opt_tolerance < lift_score)
+    if (ctx.m_best_lift_score + ctx.m_shared.m_opt_tolerance < lift_score)
     {
       should_update = true;
       if (pstats) pstats->score_improvements++;

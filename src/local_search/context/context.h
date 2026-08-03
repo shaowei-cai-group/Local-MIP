@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "../../utils/global_defs.h"
 #include <cstddef>
 #include <vector>
 
@@ -42,9 +43,12 @@ struct Readonly_Ctx
                const size_t& p_last_improve_step,
                const bool& p_current_obj_breakthrough,
                const std::vector<size_t>& p_binary_idx_list,
-               const std::vector<size_t>& p_non_fixed_var_idx_list);
+               const std::vector<size_t>& p_non_fixed_var_idx_list,
+               double p_opt_tolerance = k_default_opt_tolerance);
 
   const Model_Manager& m_model_manager;
+
+  double m_opt_tolerance;
 
   const std::vector<double>& m_var_current_value;
 
@@ -114,8 +118,9 @@ inline Readonly_Ctx::Readonly_Ctx(
     const size_t& p_last_improve_step,
     const bool& p_current_obj_breakthrough,
     const std::vector<size_t>& p_binary_idx_list,
-    const std::vector<size_t>& p_non_fixed_var_idx_list)
-    : m_model_manager(p_model_manager),
+    const std::vector<size_t>& p_non_fixed_var_idx_list,
+    double p_opt_tolerance)
+    : m_model_manager(p_model_manager), m_opt_tolerance(p_opt_tolerance),
       m_var_current_value(p_var_current_value),
       m_var_best_value(p_var_best_value), m_con_activity(p_con_activity),
       m_con_constant(p_con_constant), m_con_is_equality(p_con_is_equality),

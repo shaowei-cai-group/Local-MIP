@@ -27,9 +27,6 @@
 #include <utility>
 #include <vector>
 
-std::vector<size_t> Neighbor::m_bms_idxs;
-std::unordered_map<size_t, size_t> Neighbor::m_remap;
-
 Neighbor::Neighbor_Ctx::Neighbor_Ctx(const Readonly_Ctx& p_shared,
                                      std::vector<size_t>& p_op_var_idxs,
                                      std::vector<double>& p_op_var_deltas,
@@ -47,7 +44,8 @@ void Neighbor::Neighbor_Ctx::clear_ops()
   m_op_size = 0;
 }
 
-void Neighbor::Neighbor_Ctx::set_single_op(size_t p_var_idx, double p_delta)
+void Neighbor::Neighbor_Ctx::set_single_op(size_t p_var_idx,
+                                           double p_delta)
 {
   m_op_var_idxs.clear();
   m_op_var_deltas.clear();
@@ -145,7 +143,8 @@ double Neighbor::breakthrough_operation(size_t p_term_idx,
   double gap =
       p_ctx.m_shared.m_con_activity[0] - p_ctx.m_shared.m_con_constant[0];
   double coeff = model_obj.coeff(p_term_idx);
-  if (std::fabs(coeff) < k_zero_tolerance)
+  if (is_effectively_zero(coeff,
+                          p_ctx.m_shared.m_model_manager.zero_tolerance()))
     return 0;
   double delta = -(gap / coeff);
   if (!model_var.is_real())
@@ -155,8 +154,9 @@ double Neighbor::breakthrough_operation(size_t p_term_idx,
     else
       delta = std::ceil(delta);
   }
-  if (!model_var.in_bound(p_ctx.m_shared.m_var_current_value[p_var_idx] +
-                          delta))
+  if (!p_ctx.m_shared.m_model_manager.var_in_bound(
+          model_var,
+          p_ctx.m_shared.m_var_current_value[p_var_idx] + delta))
   {
     if (coeff > 0)
       delta = model_var.lower_bound() -
@@ -178,7 +178,8 @@ double Neighbor::inequality_mixed_tight_operation(size_t p_con_idx,
   double gap = p_ctx.m_shared.m_con_activity[p_con_idx] -
                p_ctx.m_shared.m_con_constant[p_con_idx];
   double coeff = model_con.coeff(p_term_idx);
-  if (std::fabs(coeff) < k_zero_tolerance)
+  if (is_effectively_zero(coeff,
+                          p_ctx.m_shared.m_model_manager.zero_tolerance()))
     return 0;
   double delta = -(gap / coeff);
   if (!model_var.is_real())
@@ -188,8 +189,9 @@ double Neighbor::inequality_mixed_tight_operation(size_t p_con_idx,
     else
       delta = std::ceil(delta);
   }
-  if (!model_var.in_bound(p_ctx.m_shared.m_var_current_value[p_var_idx] +
-                          delta))
+  if (!p_ctx.m_shared.m_model_manager.var_in_bound(
+          model_var,
+          p_ctx.m_shared.m_var_current_value[p_var_idx] + delta))
   {
     if (p_ctx.m_shared.m_con_pos_in_unsat_idxs[p_con_idx] != SIZE_MAX)
     {
@@ -223,13 +225,15 @@ double Neighbor::equality_mixed_tight_operation(size_t p_con_idx,
   double gap = p_ctx.m_shared.m_con_activity[p_con_idx] -
                p_ctx.m_shared.m_con_constant[p_con_idx];
   double coeff = model_con.coeff(p_term_idx);
-  if (std::fabs(coeff) < k_zero_tolerance)
+  if (is_effectively_zero(coeff,
+                          p_ctx.m_shared.m_model_manager.zero_tolerance()))
     return 0;
   double delta = -(gap / coeff);
   if (!model_var.is_real())
     delta = std::round(delta);
-  if (!model_var.in_bound(p_ctx.m_shared.m_var_current_value[p_var_idx] +
-                          delta))
+  if (!p_ctx.m_shared.m_model_manager.var_in_bound(
+          model_var,
+          p_ctx.m_shared.m_var_current_value[p_var_idx] + delta))
   {
     if ((gap > 0 && coeff > 0) || (gap < 0 && coeff < 0))
       delta = model_var.lower_bound() -

@@ -187,9 +187,6 @@ void Paras::parse_args(int argc, char* argv[])
         "zero_tolerance must be finite and non-negative", true);
   }
 
-  k_feas_tolerance = feas_tolerance;
-  k_opt_tolerance = opt_tolerance;
-  k_zero_tolerance = zero_tolerance;
 }
 
 void Paras::load_from_file(const std::string& file_path, bool p_exit_on_error)

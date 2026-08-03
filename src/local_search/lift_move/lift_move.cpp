@@ -118,7 +118,7 @@ double Local_Search::lift_move_operation(size_t p_term_idx,
     auto& model_con = m_model_manager->con(con_idx);
     size_t pos_in_con = model_var.pos_in_con(var_term_idx);
     double coeff = model_con.coeff(pos_in_con);
-    if (std::fabs(coeff) < k_zero_tolerance)
+    if (is_effectively_zero(coeff, m_model_manager->zero_tolerance()))
       continue;
     if (con_idx == 0)
       continue;

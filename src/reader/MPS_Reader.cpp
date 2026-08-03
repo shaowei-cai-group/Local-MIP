@@ -463,62 +463,64 @@ void MPS_Reader::read(const char* p_model_file)
     auto& var = m_model_manager->var(var_name);
     if (bound_type != "BV" && var.type() == Var_Type::binary)
     {
-      var.set_type(Var_Type::general_integer);
-      var.set_upper_bound(k_inf);
+      m_model_manager->set_var_type(var, Var_Type::general_integer);
+      m_model_manager->set_var_upper_bound(var, k_inf);
     }
     if (bound_type == "UP")
     {
       if (input_bound < 0.0 && !has_explicit_lower)
-        var.set_lower_bound(k_neg_inf);
-      var.set_upper_bound(input_bound);
+        m_model_manager->set_var_lower_bound(var, k_neg_inf);
+      m_model_manager->set_var_upper_bound(var, input_bound);
     }
     else if (bound_type == "LO")
-      var.set_lower_bound(input_bound);
+      m_model_manager->set_var_lower_bound(var, input_bound);
     else if (bound_type == "BV")
     {
-      var.set_type(Var_Type::binary);
-      var.set_upper_bound(1.0);
-      var.set_lower_bound(0.0);
+      m_model_manager->set_var_type(var, Var_Type::binary);
+      m_model_manager->set_var_upper_bound(var, 1.0);
+      m_model_manager->set_var_lower_bound(var, 0.0);
     }
     else if (bound_type == "LI")
     {
-      if (!is_integral_within_tolerance(input_bound))
+      if (!is_integral_within_tolerance(input_bound,
+                                        m_model_manager->feas_tolerance()))
         printf_error_line(m_read_line);
       if (!var.requires_integrality())
-        var.set_type(Var_Type::general_integer);
-      var.set_lower_bound(input_bound);
+        m_model_manager->set_var_type(var, Var_Type::general_integer);
+      m_model_manager->set_var_lower_bound(var, input_bound);
     }
     else if (bound_type == "UI")
     {
-      if (!is_integral_within_tolerance(input_bound))
+      if (!is_integral_within_tolerance(input_bound,
+                                        m_model_manager->feas_tolerance()))
         printf_error_line(m_read_line);
       if (!var.requires_integrality())
-        var.set_type(Var_Type::general_integer);
+        m_model_manager->set_var_type(var, Var_Type::general_integer);
       if (input_bound < 0.0 && !has_explicit_lower)
-        var.set_lower_bound(k_neg_inf);
-      var.set_upper_bound(input_bound);
+        m_model_manager->set_var_lower_bound(var, k_neg_inf);
+      m_model_manager->set_var_upper_bound(var, input_bound);
     }
     else if (bound_type == "FX")
     {
-      var.set_lower_bound(input_bound);
-      var.set_upper_bound(input_bound);
-      var.set_type(Var_Type::fixed);
+      m_model_manager->set_var_lower_bound(var, input_bound);
+      m_model_manager->set_var_upper_bound(var, input_bound);
+      m_model_manager->set_var_type(var, Var_Type::fixed);
     }
     else if (bound_type == "FR")
     {
-      var.set_upper_bound(k_inf);
-      var.set_lower_bound(k_neg_inf);
+      m_model_manager->set_var_upper_bound(var, k_inf);
+      m_model_manager->set_var_lower_bound(var, k_neg_inf);
     }
     else if (bound_type == "MI")
-      var.set_lower_bound(k_neg_inf);
+      m_model_manager->set_var_lower_bound(var, k_neg_inf);
     else if (bound_type == "PL")
-      var.set_upper_bound(k_inf);
+      m_model_manager->set_var_upper_bound(var, k_inf);
   }
   infile.close();
   if (m_small_coeff_counter > 0)
     printf("c skipped %zu coefficients smaller than %.3e.\n",
            m_small_coeff_counter,
-           k_zero_tolerance);
+           m_model_manager->zero_tolerance());
   auto end_time = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       end_time - start_time);
@@ -534,7 +536,7 @@ void MPS_Reader::add_coeff_var_to_con(const std::string& p_con_name,
       m_model_manager->make_var(p_var_name, m_integrality_marker);
   if (m_ignored_free_rows.contains(p_con_name))
     return;
-  if (std::fabs(p_coeff) < k_zero_tolerance)
+  if (is_effectively_zero(p_coeff, m_model_manager->zero_tolerance()))
   {
     ++m_small_coeff_counter;
     return;

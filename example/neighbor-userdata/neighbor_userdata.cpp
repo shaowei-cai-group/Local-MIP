@@ -69,7 +69,8 @@ void smart_flip_neighbor(Neighbor::Neighbor_Ctx& ctx, void* p_user_data)
     if (improvement > best_obj_improvement)
     {
       const auto& var = ctx.m_shared.m_model_manager.var(var_idx);
-      if (var.in_bound(current_value + delta))
+      if (ctx.m_shared.m_model_manager.var_in_bound(
+              var, current_value + delta))
       {
         best_obj_improvement = improvement;
         best_var_idx = var_idx;
@@ -127,7 +128,8 @@ void greedy_gradient_neighbor(Neighbor::Neighbor_Ctx& ctx, void* p_user_data)
     if (obj_cost < 0 && current_value < model_var.upper_bound())
     {
       double delta = model_var.is_real() ? 1.0 : 1.0;
-      if (model_var.in_bound(current_value + delta))
+      if (ctx.m_shared.m_model_manager.var_in_bound(
+              model_var, current_value + delta))
       {
         double improvement = -obj_cost * delta;
         if (improvement > best_improvement)
@@ -143,7 +145,8 @@ void greedy_gradient_neighbor(Neighbor::Neighbor_Ctx& ctx, void* p_user_data)
     if (obj_cost > 0 && current_value > model_var.lower_bound())
     {
       double delta = model_var.is_real() ? -1.0 : -1.0;
-      if (model_var.in_bound(current_value + delta))
+      if (ctx.m_shared.m_model_manager.var_in_bound(
+              model_var, current_value + delta))
       {
         double improvement = -obj_cost * delta;
         if (improvement > best_improvement)

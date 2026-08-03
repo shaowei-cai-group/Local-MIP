@@ -277,10 +277,11 @@ public:
 protected:
   void execute() override
   {
-    Model_Var var("x", 0, false);
-    var.set_lower_bound(0.5);
-    var.set_upper_bound(2.5);
-    var.set_type(Var_Type::general_integer);
+    Model_Manager manager;
+    auto& var = manager.var(manager.make_var("x", false));
+    manager.set_var_lower_bound(var, 0.5);
+    manager.set_var_upper_bound(var, 2.5);
+    manager.set_var_type(var, Var_Type::general_integer);
 
     check(var.requires_integrality(),
           "Integer declaration should persist integrality");
@@ -291,59 +292,67 @@ protected:
                  2.0,
                  "Late integer declaration should floor upper bound");
 
-    var.set_type(Var_Type::fixed);
+    manager.set_var_type(var, Var_Type::fixed);
     check(var.requires_integrality(),
           "Fixing an integer variable should preserve integrality");
 
-    double near_integer = 1.0 + 0.5 * k_feas_tolerance;
-    check(var.try_normalize_value(near_integer),
+    double near_integer =
+        1.0 + 0.5 * k_default_feas_tolerance;
+    check(manager.normalize_var_value(var, near_integer),
           "Tolerance-level integer noise should be accepted");
     check_double(near_integer,
                  1.0,
                  "Accepted integer values should be canonicalized");
 
     double fractional = 1.5;
-    check(!var.try_normalize_value(fractional),
+    check(!manager.normalize_var_value(var, fractional),
           "Clearly fractional integer values should be rejected");
 
-    double out_of_bounds = 3.0 + 0.5 * k_feas_tolerance;
+    double out_of_bounds =
+        3.0 + 0.5 * k_default_feas_tolerance;
     const double original_value = out_of_bounds;
-    check(!var.try_normalize_value(out_of_bounds),
+    check(!manager.normalize_var_value(var, out_of_bounds),
           "Out-of-bound integer values should be rejected");
     check(out_of_bounds == original_value,
           "Failed normalization should leave its input unchanged");
 
-    check(!is_integral_within_tolerance(0.5),
+    check(!is_integral_within_tolerance(
+              0.5, k_default_feas_tolerance),
           "Fractional values should not pass integral-value checks");
     check(is_integral_within_tolerance(
-              1.0 + 0.5 * k_feas_tolerance),
+              1.0 + 0.5 * k_default_feas_tolerance,
+              k_default_feas_tolerance),
           "Tolerance-level integer noise should be recognized");
 
-    Model_Var binary("b", 1, false);
-    binary.set_lower_bound(2.0);
-    binary.set_upper_bound(3.0);
-    binary.set_type(Var_Type::binary);
+    auto& binary = manager.var(manager.make_var("b", false));
+    manager.set_var_lower_bound(binary, 2.0);
+    manager.set_var_upper_bound(binary, 3.0);
+    manager.set_var_type(binary, Var_Type::binary);
     check(binary.lower_bound() > binary.upper_bound(),
           "Binary declaration should intersect bounds with [0, 1]");
 
-    Model_Var invalid_bounds("nan", 2, false);
-    invalid_bounds.set_lower_bound(
-        std::numeric_limits<double>::quiet_NaN());
-    check(!invalid_bounds.try_canonicalize_bounds(),
+    Model_Manager invalid_manager;
+    invalid_manager.make_con("");
+    auto& invalid_bounds =
+        invalid_manager.var(invalid_manager.make_var("nan", false));
+    invalid_manager.set_var_lower_bound(
+        invalid_bounds, std::numeric_limits<double>::quiet_NaN());
+    check(!invalid_manager.process_after_read(),
           "Non-finite variable bounds should be rejected");
 
     Model_Manager tolerant_manager;
     tolerant_manager.make_con("");
     size_t tolerant_idx = tolerant_manager.make_var("t", false);
     auto& tolerant_var = tolerant_manager.var(tolerant_idx);
-    tolerant_var.set_lower_bound(1.0);
-    tolerant_var.set_upper_bound(1.0 - 0.5 * k_feas_tolerance);
+    tolerant_manager.set_var_lower_bound(tolerant_var, 1.0);
+    tolerant_manager.set_var_upper_bound(
+        tolerant_var, 1.0 - 0.5 * k_default_feas_tolerance);
     check(tolerant_manager.process_after_read(),
           "Tolerance-inverted continuous bounds should be accepted");
     check(tolerant_var.lower_bound() == tolerant_var.upper_bound(),
           "Tolerance-inverted bounds should be canonicalized before search");
     double fixed_value = tolerant_var.lower_bound();
-    check(tolerant_var.try_normalize_value(fixed_value),
+    check(tolerant_manager.normalize_var_value(tolerant_var, fixed_value),
           "Canonical fixed bound should be safe to normalize");
   }
 };

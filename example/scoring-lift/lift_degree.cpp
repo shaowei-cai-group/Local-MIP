@@ -69,7 +69,7 @@ int main(int argc, char** argv)
     bool should_update = false;
 
     // 1. If lift score significantly better (exceeds tolerance)
-    if (ctx.m_best_lift_score + k_opt_tolerance < lift_score)
+    if (ctx.m_best_lift_score + ctx.m_shared.m_opt_tolerance < lift_score)
     {
       should_update = true;
       if (pstats)

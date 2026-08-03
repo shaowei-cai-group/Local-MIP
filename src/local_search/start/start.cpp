@@ -127,7 +127,8 @@ void Start::zero_start(Start_Ctx& p_ctx) const
   {
     const auto& model_var = p_ctx.m_shared.m_model_manager.var(var_idx);
     p_ctx.m_var_current_value[var_idx] = closest_to_zero(model_var);
-    assert(model_var.in_bound(p_ctx.m_var_current_value[var_idx]));
+    assert(p_ctx.m_shared.m_model_manager.var_in_bound(
+        model_var, p_ctx.m_var_current_value[var_idx]));
   }
 }
 
@@ -138,8 +139,8 @@ void Start::random_start(Start_Ctx& p_ctx) const
        ++var_idx)
   {
     const auto& model_var = p_ctx.m_shared.m_model_manager.var(var_idx);
-    bool is_integral_var =
-        model_var.is_binary() || model_var.is_general_integer();
+    bool is_integral_var = model_var.type() == Var_Type::binary ||
+                           model_var.is_general_integer();
     bool has_finite_lower = model_var.lower_bound() > k_neg_inf * 0.5;
     bool has_finite_upper = model_var.upper_bound() < k_inf * 0.5;
     if (!is_integral_var || !has_finite_lower || !has_finite_upper ||
@@ -153,7 +154,8 @@ void Start::random_start(Start_Ctx& p_ctx) const
     std::uniform_int_distribution<long long> distribution(lower, upper);
     p_ctx.m_var_current_value[var_idx] =
         static_cast<double>(distribution(p_ctx.m_rng));
-    assert(model_var.in_bound(p_ctx.m_var_current_value[var_idx]));
+    assert(p_ctx.m_shared.m_model_manager.var_in_bound(
+        model_var, p_ctx.m_var_current_value[var_idx]));
   }
 }
 
@@ -166,7 +168,8 @@ void Start::objective_guided_start(Start_Ctx& p_ctx) const
   {
     p_ctx.m_var_current_value[var_idx] =
         objective_guided_value(p_ctx, var_idx);
-    assert(p_ctx.m_shared.m_model_manager.var(var_idx).in_bound(
+    assert(p_ctx.m_shared.m_model_manager.var_in_bound(
+        p_ctx.m_shared.m_model_manager.var(var_idx),
         p_ctx.m_var_current_value[var_idx]));
   }
 }
@@ -177,6 +180,7 @@ void Start::lock_guided_start(Start_Ctx& p_ctx) const
   const size_t var_num = p_ctx.m_var_current_value.size();
   assert(model_manager.var_num() == var_num);
   assert(p_ctx.m_shared.m_var_obj_cost.size() == var_num);
+  const double zero_tolerance = model_manager.zero_tolerance();
 
   std::vector<size_t> up_locks(var_num, 0);
   std::vector<size_t> down_locks(var_num, 0);
@@ -188,7 +192,7 @@ void Start::lock_guided_start(Start_Ctx& p_ctx) const
     for (size_t term_idx = 0; term_idx < model_con.term_num(); ++term_idx)
     {
       const double coeff = model_con.coeff(term_idx);
-      if (std::fabs(coeff) <= k_zero_tolerance)
+      if (std::fabs(coeff) <= zero_tolerance)
         continue;
       const size_t var_idx = model_con.var_idx(term_idx);
       if (model_con.is_equality())
@@ -196,7 +200,7 @@ void Start::lock_guided_start(Start_Ctx& p_ctx) const
         ++up_locks[var_idx];
         ++down_locks[var_idx];
       }
-      else if (coeff > k_zero_tolerance)
+      else if (coeff > zero_tolerance)
         ++up_locks[var_idx];
       else
         ++down_locks[var_idx];
@@ -207,7 +211,7 @@ void Start::lock_guided_start(Start_Ctx& p_ctx) const
   {
     const auto& model_var = model_manager.var(var_idx);
     double value;
-    if (model_var.is_fixed())
+    if (model_var.type() == Var_Type::fixed)
       value = model_var.lower_bound();
     else if (down_locks[var_idx] < up_locks[var_idx])
       value = select_bound(model_var.lower_bound(), model_var);
@@ -216,13 +220,13 @@ void Start::lock_guided_start(Start_Ctx& p_ctx) const
     else
       value = objective_guided_value(p_ctx, var_idx);
     p_ctx.m_var_current_value[var_idx] = value;
-    assert(model_var.in_bound(value));
+    assert(model_manager.var_in_bound(model_var, value));
   }
 }
 
 double Start::closest_to_zero(const Model_Var& p_model_var) const
 {
-  if (p_model_var.is_fixed())
+  if (p_model_var.type() == Var_Type::fixed)
     return p_model_var.lower_bound();
   if (p_model_var.lower_bound() > 0.0)
     return p_model_var.lower_bound();
@@ -234,7 +238,7 @@ double Start::closest_to_zero(const Model_Var& p_model_var) const
 double Start::select_bound(double p_preferred_bound,
                            const Model_Var& p_model_var) const
 {
-  if (p_model_var.is_fixed())
+  if (p_model_var.type() == Var_Type::fixed)
     return p_model_var.lower_bound();
   if (p_preferred_bound > k_neg_inf && p_preferred_bound < k_inf)
     return p_preferred_bound;
@@ -245,12 +249,14 @@ double Start::objective_guided_value(const Start_Ctx& p_ctx,
                                      size_t p_var_idx) const
 {
   const auto& model_var = p_ctx.m_shared.m_model_manager.var(p_var_idx);
-  if (model_var.is_fixed())
+  const auto& model_manager = p_ctx.m_shared.m_model_manager;
+  if (model_var.type() == Var_Type::fixed)
     return model_var.lower_bound();
   const double obj_coeff = p_ctx.m_shared.m_var_obj_cost[p_var_idx];
-  if (obj_coeff > k_zero_tolerance)
+  const double zero_tolerance = model_manager.zero_tolerance();
+  if (obj_coeff > zero_tolerance)
     return select_bound(model_var.lower_bound(), model_var);
-  if (obj_coeff < -k_zero_tolerance)
+  if (obj_coeff < -zero_tolerance)
     return select_bound(model_var.upper_bound(), model_var);
   return closest_to_zero(model_var);
 }

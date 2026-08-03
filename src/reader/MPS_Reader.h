@@ -14,14 +14,13 @@
 #pragma once
 #include "../model_data/Model_Manager.h"
 #include "../utils/solver_error.h"
-#include "Model_Reader.h"
 #include <cctype>
 #include <cstddef>
 #include <sstream>
 #include <string>
 #include <unordered_set>
 
-class MPS_Reader : public Model_Reader
+class MPS_Reader
 {
 private:
   Model_Manager* m_model_manager;
@@ -55,9 +54,7 @@ private:
 public:
   MPS_Reader(Model_Manager* p_model_manager);
 
-  ~MPS_Reader() override = default;
-
-  void read(const char* p_model_file) override;
+  void read(const char* p_model_file);
 };
 
 inline void MPS_Reader::iss_setup()

@@ -39,7 +39,7 @@ namespace
 
 struct SharedData
 {
-  explicit SharedData(Model_Manager& manager)
+  explicit SharedData(const Model_Manager& manager)
       : var_best_value(), con_activity(), con_constant(),
         con_is_equality(), con_weight(), con_unsat_idxs(),
         con_pos_in_unsat_idxs(), var_last_dec_step(), var_last_inc_step(),
@@ -121,7 +121,7 @@ bool test_start_cbk_invocation()
         context.m_var_current_value[0] = 42.0;
       });
 
-  SharedData shared(*solver.m_model_manager);
+  SharedData shared(*solver.get_model_manager());
   std::vector<double> var_values(1, 0.0);
   std::mt19937 random_engine(1);
   Start::Start_Ctx context(shared.view, var_values, random_engine);
@@ -139,7 +139,7 @@ bool test_start_solution_values()
 {
   Local_MIP solver;
 
-  SharedData shared(*solver.m_model_manager);
+  SharedData shared(*solver.get_model_manager());
   std::vector<double> var_values(2, 0.0);
   std::vector<double> start_solution = {3.0, 4.0};
   std::mt19937 random_engine(1);
@@ -160,7 +160,7 @@ bool test_start_solution_size_mismatch()
 {
   Local_MIP solver;
 
-  SharedData shared(*solver.m_model_manager);
+  SharedData shared(*solver.get_model_manager());
   std::vector<double> var_values(2, 0.0);
   std::vector<double> start_solution = {3.0};
   std::mt19937 random_engine(1);
@@ -193,7 +193,7 @@ bool test_restart_cbk_invocation()
         context.m_var_current_value[0] = 99.0;
       });
 
-  SharedData shared(*solver.m_model_manager);
+  SharedData shared(*solver.get_model_manager());
   std::vector<double> current_values(1, 0.0);
   std::mt19937 random_engine(2);
   bool has_feasible = false;
@@ -231,7 +231,7 @@ bool test_weight_cbk_invocation()
         context.m_con_weight[0] = 777;
       });
 
-  SharedData shared(*solver.m_model_manager);
+  SharedData shared(*solver.get_model_manager());
   shared.con_weight.assign(1, 0);
   shared.con_activity.assign(1, 0.0);
   shared.con_constant.assign(1, 0.0);
@@ -263,7 +263,7 @@ bool test_lift_scoring_cbk_invocation()
   double captured_delta = 0.0;
 
   solver.set_lift_scoring_cbk(
-      [&](Scoring::Lift_Ctx& ctx, size_t var_idx, double delta, void* user_data)
+      [&](Scoring::Lift_Ctx& ctx, size_t var_idx, double delta, void*)
       {
         invoked = true;
         captured_idx = var_idx;
@@ -282,7 +282,7 @@ bool test_lift_scoring_cbk_invocation()
   size_t current_best_age = SIZE_MAX;
   std::mt19937 random_engine(4);
 
-  SharedData shared(*solver.m_model_manager);
+  SharedData shared(*solver.get_model_manager());
   shared.var_obj_cost = var_obj_cost;
   shared.var_last_dec_step = last_dec_step;
   shared.var_last_inc_step = last_inc_step;
@@ -317,7 +317,7 @@ bool test_neighbor_scoring_cbk_invocation()
   double captured_delta = 0.0;
 
   solver.set_neighbor_scoring_cbk(
-      [&](Scoring::Neighbor_Ctx& ctx, size_t var_idx, double delta, void* user_data)
+      [&](Scoring::Neighbor_Ctx& ctx, size_t var_idx, double delta, void*)
       {
         invoked = true;
         captured_idx = var_idx;
@@ -344,7 +344,7 @@ bool test_neighbor_scoring_cbk_invocation()
   size_t current_best_var_idx = SIZE_MAX;
   double current_best_delta = 0.0;
 
-  SharedData shared(*solver.m_model_manager);
+  SharedData shared(*solver.get_model_manager());
   shared.con_activity = con_activity;
   shared.con_constant = con_constant;
   shared.con_is_equality = con_is_equality;

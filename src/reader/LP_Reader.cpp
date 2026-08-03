@@ -796,7 +796,7 @@ void LP_Reader::parse_bounds(Tokenizer& p_tokenizer)
       Token maybe_second = p_tokenizer.peek();
       if (first_relation.type == Token_Type::less_equal)
       {
-        var.set_lower_bound(first_value);
+        m_model_manager->set_var_lower_bound(var, first_value);
         if (maybe_second.type == Token_Type::less_equal ||
             maybe_second.type == Token_Type::greater_equal)
         {
@@ -804,17 +804,17 @@ void LP_Reader::parse_bounds(Tokenizer& p_tokenizer)
           if (second_relation.type != Token_Type::less_equal)
             parse_error("invalid chained bounds order");
           double upper_value = parse_numeric_value(p_tokenizer);
-          var.set_upper_bound(upper_value);
+          m_model_manager->set_var_upper_bound(var, upper_value);
         }
       }
       else
       {
-        var.set_upper_bound(first_value);
+        m_model_manager->set_var_upper_bound(var, first_value);
         if (maybe_second.type == Token_Type::greater_equal)
         {
           p_tokenizer.next();
           double lower_value = parse_numeric_value(p_tokenizer);
-          var.set_lower_bound(lower_value);
+          m_model_manager->set_var_lower_bound(var, lower_value);
         }
       }
       continue;
@@ -832,8 +832,8 @@ void LP_Reader::parse_bounds(Tokenizer& p_tokenizer)
       if (keyword_upper == "FREE")
       {
         p_tokenizer.next();
-        var.set_lower_bound(k_neg_inf);
-        var.set_upper_bound(k_inf);
+        m_model_manager->set_var_lower_bound(var, k_neg_inf);
+        m_model_manager->set_var_upper_bound(var, k_inf);
         continue;
       }
     }
@@ -841,19 +841,19 @@ void LP_Reader::parse_bounds(Tokenizer& p_tokenizer)
     if (relation.type == Token_Type::less_equal)
     {
       double upper = parse_numeric_value(p_tokenizer);
-      var.set_upper_bound(upper);
+      m_model_manager->set_var_upper_bound(var, upper);
     }
     else if (relation.type == Token_Type::greater_equal)
     {
       double lower = parse_numeric_value(p_tokenizer);
-      var.set_lower_bound(lower);
+      m_model_manager->set_var_lower_bound(var, lower);
     }
     else if (relation.type == Token_Type::equal)
     {
       double value = parse_numeric_value(p_tokenizer);
-      var.set_lower_bound(value);
-      var.set_upper_bound(value);
-      var.set_type(Var_Type::fixed);
+      m_model_manager->set_var_lower_bound(var, value);
+      m_model_manager->set_var_upper_bound(var, value);
+      m_model_manager->set_var_type(var, Var_Type::fixed);
     }
     else
       parse_error("invalid bounds operator");
@@ -886,7 +886,7 @@ void LP_Reader::parse_integers(Tokenizer& p_tokenizer)
     size_t var_idx = m_model_manager->make_var(token.text, false);
     auto& var = m_model_manager->var(var_idx);
     if (var.type() != Var_Type::binary)
-      var.set_type(Var_Type::general_integer);
+      m_model_manager->set_var_type(var, Var_Type::general_integer);
   }
 }
 
@@ -915,11 +915,11 @@ void LP_Reader::parse_binaries(Tokenizer& p_tokenizer)
       parse_error("invalid binary declaration");
     size_t var_idx = m_model_manager->make_var(token.text, false);
     auto& var = m_model_manager->var(var_idx);
-    var.set_type(Var_Type::binary);
+    m_model_manager->set_var_type(var, Var_Type::binary);
     if (var.lower_bound() < 0.0)
-      var.set_lower_bound(0.0);
+      m_model_manager->set_var_lower_bound(var, 0.0);
     if (var.upper_bound() > 1.0)
-      var.set_upper_bound(1.0);
+      m_model_manager->set_var_upper_bound(var, 1.0);
   }
 }
 
@@ -927,7 +927,8 @@ void LP_Reader::add_term(const std::string& p_con_name,
                          const std::string& p_var_name,
                          double p_coeff)
 {
-  if (std::fabs(p_coeff) < k_zero_tolerance)
+  if (is_effectively_zero(
+          p_coeff, m_model_manager->zero_tolerance()))
     return;
   size_t con_idx;
   Model_Con* con;
