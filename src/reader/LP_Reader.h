@@ -13,7 +13,6 @@
 
 #pragma once
 #include "../model_data/Model_Manager.h"
-#include "Model_Reader.h"
 #include <cstddef>
 #include <string>
 
@@ -22,14 +21,12 @@ namespace lp_internal
 class Tokenizer;
 }
 
-class LP_Reader : public Model_Reader
+class LP_Reader
 {
 public:
   explicit LP_Reader(Model_Manager* p_model_manager);
 
-  ~LP_Reader() override = default;
-
-  void read(const char* p_file_name) override;
+  void read(const char* p_file_name);
 
 private:
   Model_Manager* m_model_manager;

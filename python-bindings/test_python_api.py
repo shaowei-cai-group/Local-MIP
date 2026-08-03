@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import gc
+import threading
 import weakref
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -70,7 +71,8 @@ def run_file_solver_smoke():
                     "shared binary_idx_list should be exposed as a view")
             if binary_idxs:
                 var = ctx.shared.model_manager.var(binary_idxs[0])
-                require(var.is_binary(), "model var lookup should work in Python")
+                require(var.type == lm.VarType.binary,
+                        "model var lookup should work in Python")
                 require(var.requires_integrality(),
                         "binary model var should retain integrality metadata")
                 ctx.current_values[binary_idxs[0]] = 0.0
@@ -94,10 +96,10 @@ def run_file_solver_smoke():
             var_idx = binary_idxs[0]
             current_value = ctx.shared.var_current_value[var_idx]
             delta = 1.0 if current_value < 0.5 else -1.0
-            require(
-                ctx.shared.model_manager.var(var_idx).in_bound(current_value + delta),
-                "neighbor callback should be able to inspect bounds",
-            )
+            model_manager = ctx.shared.model_manager
+            require(model_manager.var_in_bound(
+                        model_manager.var(var_idx), current_value + delta),
+                    "neighbor callback should be able to inspect bounds")
             ctx.set_single_op(var_idx, delta)
 
         def neighbor_score_cbk(ctx, var_idx, delta, user_data):
@@ -194,6 +196,7 @@ def run_restart_weight_smoke():
     solver.set_time_limit(0.3)
     solver.set_log_obj(False)
     solver.set_restart_step(1)
+    solver.set_start_method("random")
     solver.clear_neighbor_list()
 
     stats = {
@@ -229,23 +232,26 @@ def run_restart_weight_smoke():
 
 
 def run_callback_lifetime_and_bool_view_smoke():
-    solver = lm.LocalMIP()
-    solver.enable_model_api()
-    solver.set_sense(lm.Sense.minimize)
+    builder = lm.ModelBuilder()
+    builder.set_sense(lm.Sense.minimize)
+    x = builder.add_var("x", 0.0, 1.0, 1.0, lm.VarType.binary)
+    y = builder.add_var("y", 0.0, 1.0, 0.0, lm.VarType.binary)
+    builder.add_con(1.0, 1.0, [x, y], [1.0, 1.0])
+
+    solver = lm.LocalMIP(builder.prepare())
     solver.set_time_limit(0.1)
+    solver.set_opt_tolerance(2e-3)
     solver.set_log_obj(False)
 
-    x = solver.add_var("x", 0.0, 1.0, 1.0, lm.VarType.binary)
-    y = solver.add_var("y", 0.0, 1.0, 0.0, lm.VarType.binary)
-    solver.add_con(1.0, 1.0, [x, y], [1.0, 1.0])
-
-    captured = {"ctx": None, "start": 0, "shared_flags": None, "shared_iter_flags": None}
+    captured = {"ctx": None, "start": 0, "opt_tolerance": None,
+                "shared_flags": None, "shared_iter_flags": None}
 
     def start_cbk(ctx, user_data):
         require(user_data is None,
                 "explicit None user_data should be forwarded to Python callbacks")
         captured["start"] += 1
         captured["ctx"] = ctx
+        captured["opt_tolerance"] = ctx.shared.opt_tolerance
         captured["shared_flags"] = ctx.shared.con_is_equality.to_list()
         captured["shared_iter_flags"] = list(ctx.shared.con_is_equality)
 
@@ -264,6 +270,8 @@ def run_callback_lifetime_and_bool_view_smoke():
             "ReadonlyCtx.con_is_equality should expose bool values")
     require(captured["shared_flags"] == manager_flags,
             "ReadonlyCtx.con_is_equality should match ModelManager.con_is_equality")
+    require(captured["opt_tolerance"] == 2e-3,
+            "ReadonlyCtx should expose the solver optimality tolerance")
 
     solver_ref = weakref.ref(solver)
     del solver
@@ -283,35 +291,27 @@ def run_callback_lifetime_and_bool_view_smoke():
 
 
 def run_model_api_smoke():
-    solver = lm.LocalMIP()
-    solver.enable_model_api()
-    solver.set_sense(lm.Sense.maximize)
-    legacy_calls = {"start": 0}
+    builder = lm.ModelBuilder()
+    builder.set_sense(lm.Sense.maximize)
+    callback_calls = {"start": 0}
 
-    def legacy_start(ctx):
-        legacy_calls["start"] += 1
+    def start_callback(ctx):
+        callback_calls["start"] += 1
 
-    solver.set_start_cbk(legacy_start)
+    x = builder.add_var("x", 0.0, 1.0, 1.0, lm.VarType.binary)
+    y = builder.add_var("y", 0.0, math.inf, 0.5,
+                        lm.VarType.general_integer)
+    builder.add_con(-math.inf, 2.0, [x, y], [1.0, 1.0])
 
-    x = solver.add_var("x", 0.0, 1.0, 1.0, lm.VarType.binary)
-    y = solver.add_var("y", 0.0, math.inf, 0.5,
-                       lm.VarType.general_integer)
-
+    solver = lm.LocalMIP(builder.prepare())
+    solver.set_start_cbk(start_callback)
     manager = solver.get_model_manager()
-    require(manager.var_num == 0,
-            "model manager should remain empty before the programmatic model is materialized")
     try:
-        manager.var(0)
+        manager.var(2)
     except IndexError:
         pass
     else:
         raise AssertionError("ModelManager.var should raise IndexError on invalid access")
-    try:
-        manager.obj()
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("ModelManager.obj should raise ValueError when unavailable")
     try:
         manager.con_idx("missing")
     except KeyError:
@@ -319,7 +319,6 @@ def run_model_api_smoke():
     else:
         raise AssertionError("ModelManager.con_idx should raise KeyError for unknown names")
 
-    solver.add_con(-math.inf, 2.0, [x, y], [1.0, 1.0])
     solver.set_time_limit(0.1)
     solver.set_log_obj(False)
     solver.run()
@@ -330,8 +329,8 @@ def run_model_api_smoke():
             "Model API should canonicalize an infinite variable upper bound")
     sol = solver.get_solution()
     require(len(sol) == 2, "model API solution vector should be exposed")
-    require(legacy_calls["start"] > 0,
-            "legacy no-user_data callback signatures should still work")
+    require(callback_calls["start"] > 0,
+            "no-user_data callback signatures should still work")
 
     cost_view = solver.get_model_manager().var_obj_cost
     require(len(cost_view) == 2, "view should expose model-manager vector contents")
@@ -342,12 +341,88 @@ def run_model_api_smoke():
             "vector views should remain valid while they keep the owner alive")
 
 
+def run_shared_prepared_model_smoke():
+    model_path = os.path.join(REPO_ROOT, "test-set", "sct1.mps")
+    options = lm.ModelPrepareOptions()
+    options.bound_strengthen = 0
+    prepared = lm.PreparedModel.from_file(model_path, options)
+    var_num = prepared.model_manager.var_num
+    con_num = prepared.model_manager.con_num
+
+    solvers = []
+    for seed in range(1, 5):
+        solver = lm.LocalMIP(prepared)
+        solver.set_random_seed(seed)
+        solver.set_time_limit(0.1)
+        solver.set_log_obj(False)
+        require(solver.get_model_manager().var_num ==
+                prepared.model_manager.var_num,
+                "prepared solver should expose the shared model")
+        solvers.append(solver)
+
+    del prepared
+    gc.collect()
+    require(solvers[0].get_model_manager().var_num == var_num,
+            "solvers should retain the prepared model lifetime")
+
+    errors = [None] * len(solvers)
+
+    def run_solver(index):
+        try:
+            solvers[index].run()
+        except Exception as exc:  # pragma: no cover - reported below
+            errors[index] = exc
+
+    workers = [threading.Thread(target=run_solver, args=(idx,))
+               for idx in range(len(solvers))]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join()
+
+    require(all(error is None for error in errors),
+            f"parallel prepared-model runs should succeed: {errors}")
+    retained_manager = solvers[0].get_model_manager()
+    require(retained_manager.var_num == var_num and
+            retained_manager.con_num == con_num,
+            "parallel Python search must preserve model structure")
+
+    builder = lm.ModelBuilder()
+    builder.set_sense(lm.Sense.maximize)
+    x = builder.add_var("x", 0.0, 1.0, 1.0, lm.VarType.binary)
+    require(builder.add_con(-math.inf, 1.0, [x], [1.0]) >= 0,
+            "Python ModelBuilder should add a constraint")
+    builder_options = lm.ModelPrepareOptions()
+    builder_options.feas_tolerance = 1e-3
+    builder_options.bound_strengthen = 0
+    built_model = builder.prepare(builder_options)
+    built_var = built_model.model_manager.var(x)
+    require(built_model.model_manager.var_in_bound(built_var, 1.0005),
+            "prepared variables should support the model tolerance without "
+            "per-variable tolerance storage")
+    built_solver = lm.LocalMIP(built_model)
+    built_solver.set_time_limit(0.1)
+    built_solver.set_log_obj(False)
+    built_solver.run()
+    require(built_solver.is_feasible() and built_solver.get_solution()[x] == 1.0,
+            "Python ModelBuilder should prepare a reusable maximize model")
+
+    rerun_rejected = False
+    try:
+        built_solver.run()
+    except Exception as exc:
+        rerun_rejected = "only be called once" in str(exc)
+    require(rerun_rejected,
+            "Each Python LocalMIP object should permit exactly one run")
+
+
 def main():
     run_param_file_error_smoke()
     run_file_solver_smoke()
     run_restart_weight_smoke()
     run_callback_lifetime_and_bool_view_smoke()
     run_model_api_smoke()
+    run_shared_prepared_model_smoke()
     print("Python binding smoke tests passed.")
 
 

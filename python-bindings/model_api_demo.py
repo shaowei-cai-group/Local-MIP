@@ -25,27 +25,30 @@ import localmip_py as lm  # noqa: E402
 def main():
     inf = math.inf
 
-    solver = lm.LocalMIP()
-    solver.enable_model_api()
-    solver.set_sense(lm.Sense.maximize)
-
-    solver.set_time_limit(1.0)
-    solver.set_log_obj(True)
+    builder = lm.ModelBuilder()
+    builder.set_sense(lm.Sense.maximize)
 
     print("Building model...")
 
-    x1 = solver.add_var("x1", 0.0, 40.0, 1.0, lm.VarType.real)
-    x2 = solver.add_var("x2", 0.0, inf, 2.0, lm.VarType.real)
-    x3 = solver.add_var("x3", 0.0, inf, 3.0, lm.VarType.real)
-    x4 = solver.add_var("x4", 2.0, 3.0, 1.0, lm.VarType.general_integer)
+    x1 = builder.add_var("x1", 0.0, 40.0, 1.0, lm.VarType.real)
+    x2 = builder.add_var("x2", 0.0, inf, 2.0, lm.VarType.real)
+    x3 = builder.add_var("x3", 0.0, inf, 3.0, lm.VarType.real)
+    x4 = builder.add_var(
+        "x4", 2.0, 3.0, 1.0, lm.VarType.general_integer)
 
     print("Added 4 variables: x1, x2, x3, x4")
 
-    solver.add_con(-inf, 20.0, [x1, x2, x3, x4], [-1.0, 1.0, 1.0, 10.0])
-    solver.add_con(-inf, 30.0, [x1, x2, x3], [1.0, -3.0, 1.0])
-    solver.add_con(0.0, 0.0, [x2, x4], [1.0, -3.5])
+    builder.add_con(
+        -inf, 20.0, [x1, x2, x3, x4], [-1.0, 1.0, 1.0, 10.0])
+    builder.add_con(-inf, 30.0, [x1, x2, x3], [1.0, -3.0, 1.0])
+    builder.add_con(0.0, 0.0, [x2, x4], [1.0, -3.5])
 
     print("Added 3 constraints")
+
+    model = builder.prepare()
+    solver = lm.LocalMIP(model)
+    solver.set_time_limit(1.0)
+    solver.set_log_obj(True)
 
     print("\nStarting solver...")
     print("=====================================")

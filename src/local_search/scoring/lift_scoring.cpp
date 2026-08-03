@@ -66,7 +66,8 @@ void Scoring::lift_age(Lift_Ctx& p_ctx,
   double lift_score = -p_ctx.m_shared.m_var_obj_cost[p_var_idx] * p_delta;
   size_t age = std::max(p_ctx.m_shared.m_var_last_dec_step[p_var_idx],
                         p_ctx.m_shared.m_var_last_inc_step[p_var_idx]);
-  if (p_ctx.m_best_lift_score + k_opt_tolerance < lift_score ||
+  if (p_ctx.m_best_lift_score + p_ctx.m_shared.m_opt_tolerance <
+          lift_score ||
       (p_ctx.m_best_lift_score <= lift_score && age < p_ctx.m_best_age))
   {
     p_ctx.m_best_var_idx = p_var_idx;
@@ -84,7 +85,8 @@ void Scoring::lift_random(Lift_Ctx& p_ctx,
   size_t age = std::max(p_ctx.m_shared.m_var_last_dec_step[p_var_idx],
                         p_ctx.m_shared.m_var_last_inc_step[p_var_idx]);
   if (p_ctx.m_best_var_idx == SIZE_MAX ||
-      p_ctx.m_best_lift_score + k_opt_tolerance < lift_score)
+      p_ctx.m_best_lift_score + p_ctx.m_shared.m_opt_tolerance <
+          lift_score)
   {
     p_ctx.m_best_var_idx = p_var_idx;
     p_ctx.m_best_delta = p_delta;

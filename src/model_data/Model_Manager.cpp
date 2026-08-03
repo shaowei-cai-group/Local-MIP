@@ -27,10 +27,12 @@
 #include <utility>
 #include <vector>
 
-Model_Manager::Model_Manager()
-    : m_bound_strengthen(1), m_is_min(1), m_obj_offset(0), m_var_num(0),
-      m_general_integer_num(0), m_binary_num(0), m_fixed_num(0),
-      m_real_num(0), m_con_num(0), m_delete_con_num(0),
+Model_Manager::Model_Manager(double p_feas_tolerance,
+                             double p_zero_tolerance)
+    : m_bound_strengthen(1), m_feas_tolerance(p_feas_tolerance),
+      m_zero_tolerance(p_zero_tolerance), m_is_min(1), m_obj_offset(0),
+      m_var_num(0), m_general_integer_num(0), m_binary_num(0),
+      m_fixed_num(0), m_real_num(0), m_con_num(0), m_delete_con_num(0),
       m_delete_var_num(0), m_infer_var_num(0), m_split_eq(true)
 {
 }
@@ -64,6 +66,119 @@ size_t Model_Manager::make_con(const std::string& p_name,
   if (inserted)
     m_con_list.emplace_back(p_name, iter->second, p_type);
   return iter->second;
+}
+
+void Model_Manager::normalize_integral_bounds(Model_Var& p_var) const
+{
+  p_var.m_lower_bound = std::ceil(p_var.m_lower_bound - m_feas_tolerance);
+  p_var.m_upper_bound = std::floor(p_var.m_upper_bound + m_feas_tolerance);
+}
+
+void Model_Manager::set_var_type(Model_Var& p_var, Var_Type p_type)
+{
+  if (p_type == Var_Type::binary || p_type == Var_Type::general_integer)
+  {
+    p_var.m_requires_integrality = true;
+    normalize_integral_bounds(p_var);
+    if (p_type == Var_Type::binary)
+    {
+      p_var.m_lower_bound = std::max(p_var.m_lower_bound, 0.0);
+      p_var.m_upper_bound = std::min(p_var.m_upper_bound, 1.0);
+    }
+  }
+  else if (p_type == Var_Type::real)
+    p_var.m_requires_integrality = false;
+  p_var.m_type = p_type;
+}
+
+void Model_Manager::set_var_lower_bound(Model_Var& p_var,
+                                        double p_lower_bound)
+{
+  assert(p_var.m_type != Var_Type::fixed);
+  if (p_var.m_requires_integrality)
+    p_var.m_lower_bound = std::ceil(p_lower_bound - m_feas_tolerance);
+  else
+    p_var.m_lower_bound = p_lower_bound;
+}
+
+void Model_Manager::set_var_upper_bound(Model_Var& p_var,
+                                        double p_upper_bound)
+{
+  assert(p_var.m_type != Var_Type::fixed);
+  if (p_var.m_requires_integrality)
+    p_var.m_upper_bound = std::floor(p_upper_bound + m_feas_tolerance);
+  else
+    p_var.m_upper_bound = p_upper_bound;
+}
+
+bool Model_Manager::canonicalize_var_bounds(Model_Var& p_var) const
+{
+  if (!std::isfinite(p_var.m_lower_bound) ||
+      !std::isfinite(p_var.m_upper_bound))
+    return false;
+  if (p_var.m_lower_bound <= p_var.m_upper_bound)
+    return true;
+  if (p_var.m_requires_integrality ||
+      p_var.m_lower_bound > p_var.m_upper_bound + m_feas_tolerance)
+    return false;
+
+  const double fixed_value =
+      std::midpoint(p_var.m_lower_bound, p_var.m_upper_bound);
+  p_var.m_lower_bound = fixed_value;
+  p_var.m_upper_bound = fixed_value;
+  return true;
+}
+
+bool Model_Manager::var_is_fixed(const Model_Var& p_var) const
+{
+  return is_effectively_zero(p_var.lower_bound() - p_var.upper_bound(),
+                             m_feas_tolerance);
+}
+
+bool Model_Manager::var_is_binary(const Model_Var& p_var) const
+{
+  return p_var.type() == Var_Type::binary ||
+         (p_var.type() == Var_Type::general_integer &&
+          is_effectively_zero(p_var.lower_bound(), m_feas_tolerance) &&
+          is_effectively_zero(p_var.upper_bound() - 1.0,
+                              m_feas_tolerance));
+}
+
+bool Model_Manager::empty_con_is_satisfied(const Model_Con& p_con) const
+{
+  return (!p_con.is_equality() && p_con.rhs() + m_feas_tolerance >= 0.0) ||
+         (p_con.is_equality() &&
+          std::fabs(p_con.rhs()) <= m_feas_tolerance);
+}
+
+bool Model_Manager::var_in_bound(const Model_Var& p_var,
+                                 double p_value) const
+{
+  return p_var.m_lower_bound - m_feas_tolerance <= p_value &&
+         p_value <= p_var.m_upper_bound + m_feas_tolerance;
+}
+
+bool Model_Manager::normalize_var_value(const Model_Var& p_var,
+                                        double& p_value) const
+{
+  if (!std::isfinite(p_value) || !std::isfinite(p_var.m_lower_bound) ||
+      !std::isfinite(p_var.m_upper_bound) ||
+      p_var.m_lower_bound > p_var.m_upper_bound)
+    return false;
+
+  double normalized_value = p_value;
+  if (p_var.m_requires_integrality)
+  {
+    const double rounded_value = std::round(normalized_value);
+    if (std::fabs(normalized_value - rounded_value) > m_feas_tolerance)
+      return false;
+    normalized_value = rounded_value;
+  }
+  if (!var_in_bound(p_var, normalized_value))
+    return false;
+  p_value = std::clamp(
+      normalized_value, p_var.m_lower_bound, p_var.m_upper_bound);
+  return true;
 }
 
 bool Model_Manager::process_after_read()
@@ -109,7 +224,7 @@ bool Model_Manager::process_after_read()
   {
     auto& con = m_con_list[con_idx];
     if (!con.is_inferred_sat() && con.term_num() == 0 &&
-        con.verify_empty_sat())
+        empty_con_is_satisfied(con))
     {
       con.mark_inferred_sat();
       m_delete_con_num++;
@@ -153,7 +268,7 @@ bool Model_Manager::calculate_vars()
   for (size_t var_idx = 0; var_idx < m_var_num; var_idx++)
   {
     auto& model_var = m_var_list[var_idx];
-    if (!model_var.try_canonicalize_bounds())
+    if (!canonicalize_var_bounds(model_var))
     {
       printf("c infeasible variable bound: %s LB: %.15g; UB: %.15g\n",
              model_var.name().c_str(),
@@ -161,25 +276,25 @@ bool Model_Manager::calculate_vars()
              model_var.upper_bound());
       return false;
     }
-    if (model_var.is_fixed())
+    if (var_is_fixed(model_var))
     {
       m_fixed_num++;
-      model_var.set_type(Var_Type::fixed);
+      set_var_type(model_var, Var_Type::fixed);
     }
-    else if (model_var.is_binary())
+    else if (var_is_binary(model_var))
     {
       m_binary_num++;
-      model_var.set_type(Var_Type::binary);
+      set_var_type(model_var, Var_Type::binary);
       m_binary_idx_list.push_back(var_idx);
     }
     else if (model_var.type() == Var_Type::general_integer)
       m_general_integer_num++;
     else
     {
-      model_var.set_type(Var_Type::real);
+      set_var_type(model_var, Var_Type::real);
       m_real_num++;
     }
-    if (!model_var.is_fixed())
+    if (!var_is_fixed(model_var))
       m_non_fixed_var_idxs.push_back(var_idx);
   }
   printf("c fixed: %zu, binary: %zu, general integer: %zu, real: %zu\n",
@@ -204,7 +319,7 @@ bool Model_Manager::tighten_bounds()
     }
     if (model_con.term_num() == 0)
     {
-      if (model_con.verify_empty_sat())
+      if (empty_con_is_satisfied(model_con))
       {
         model_con.mark_inferred_sat();
         m_delete_con_num++;
@@ -225,11 +340,11 @@ bool Model_Manager::tighten_bounds()
 bool Model_Manager::singleton_deduction(Model_Con& model_con)
 {
   double coeff = model_con.unique_coeff();
-  if (std::fabs(coeff) <= k_zero_tolerance)
+  if (std::fabs(coeff) <= m_zero_tolerance)
   {
     if (model_con.is_equality())
     {
-      if (std::fabs(model_con.rhs()) > k_feas_tolerance)
+      if (std::fabs(model_con.rhs()) > m_feas_tolerance)
       {
         printf("c tightening bound failed due to zero coefficient "
                "equality: %s, rhs: %lf\n",
@@ -239,7 +354,7 @@ bool Model_Manager::singleton_deduction(Model_Con& model_con)
       }
       return true;
     }
-    if (model_con.rhs() + k_feas_tolerance < 0.0)
+    if (model_con.rhs() + m_feas_tolerance < 0.0)
     {
       printf("c tightening bound failed due to zero coefficient "
              "inequality: %s, rhs: %lf\n",
@@ -250,14 +365,14 @@ bool Model_Manager::singleton_deduction(Model_Con& model_con)
     return true;
   }
   auto& var = m_var_list[model_con.unique_var_idx()];
-  if (var.is_fixed())
+  if (var_is_fixed(var))
   {
     double fixed_value =
         std::midpoint(var.lower_bound(), var.upper_bound());
     if (model_con.is_equality())
     {
       double target_value = model_con.rhs() / coeff;
-      if (std::fabs(target_value - fixed_value) > k_feas_tolerance)
+      if (std::fabs(target_value - fixed_value) > m_feas_tolerance)
       {
         printf("c tightening bound failed due to equality constraint: "
                "%s, rhs: %lf, coeff: %lf, fixed_value: %lf, "
@@ -272,9 +387,9 @@ bool Model_Manager::singleton_deduction(Model_Con& model_con)
       }
       return true;
     }
-    double new_bound = (model_con.rhs() + k_feas_tolerance) / coeff;
-    if ((coeff > 0 && fixed_value > new_bound + k_feas_tolerance) ||
-        (coeff < 0 && fixed_value < new_bound - k_feas_tolerance))
+    double new_bound = (model_con.rhs() + m_feas_tolerance) / coeff;
+    if ((coeff > 0 && fixed_value > new_bound + m_feas_tolerance) ||
+        (coeff < 0 && fixed_value < new_bound - m_feas_tolerance))
     {
       printf("c tightening bound failed due to inequality "
              "constraint: %s, rhs: %lf, coeff: %lf, new_bound: %lf, "
@@ -291,8 +406,8 @@ bool Model_Manager::singleton_deduction(Model_Con& model_con)
   if (model_con.is_equality())
   {
     double new_bound = model_con.rhs() / coeff;
-    if (new_bound > var.upper_bound() + k_feas_tolerance ||
-        new_bound < var.lower_bound() - k_feas_tolerance)
+    if (new_bound > var.upper_bound() + m_feas_tolerance ||
+        new_bound < var.lower_bound() - m_feas_tolerance)
     {
       printf("c tightening bound failed due to equality constraint: "
              "%s, rhs: %lf, coeff: %lf, new_bound: %lf, "
@@ -307,20 +422,24 @@ bool Model_Manager::singleton_deduction(Model_Con& model_con)
     }
     if (coeff > 0)
     {
-      var.set_upper_bound((model_con.rhs() + k_feas_tolerance) / coeff);
-      var.set_lower_bound((model_con.rhs() - k_feas_tolerance) / coeff);
+      set_var_upper_bound(var,
+                          (model_con.rhs() + m_feas_tolerance) / coeff);
+      set_var_lower_bound(var,
+                          (model_con.rhs() - m_feas_tolerance) / coeff);
     }
     else
     {
-      var.set_upper_bound((model_con.rhs() - k_feas_tolerance) / coeff);
-      var.set_lower_bound((model_con.rhs() + k_feas_tolerance) / coeff);
+      set_var_upper_bound(var,
+                          (model_con.rhs() - m_feas_tolerance) / coeff);
+      set_var_lower_bound(var,
+                          (model_con.rhs() + m_feas_tolerance) / coeff);
     }
   }
   else
   {
-    double new_bound = (model_con.rhs() + k_feas_tolerance) / coeff;
-    if ((coeff > 0 && new_bound < var.lower_bound() - k_feas_tolerance) ||
-        (coeff < 0 && new_bound > var.upper_bound() + k_feas_tolerance))
+    double new_bound = (model_con.rhs() + m_feas_tolerance) / coeff;
+    if ((coeff > 0 && new_bound < var.lower_bound() - m_feas_tolerance) ||
+        (coeff < 0 && new_bound > var.upper_bound() + m_feas_tolerance))
     {
       printf("c tightening bound failed due to inequality "
              "constraint: %s, rhs: %lf, coeff: %lf, new_bound: %lf, "
@@ -334,9 +453,9 @@ bool Model_Manager::singleton_deduction(Model_Con& model_con)
       return false;
     }
     if (coeff > 0 && new_bound < var.upper_bound()) // x <= bound
-      var.set_upper_bound(new_bound);
+      set_var_upper_bound(var, new_bound);
     else if (coeff < 0 && var.lower_bound() < new_bound) // x >= bound
-      var.set_lower_bound(new_bound);
+      set_var_lower_bound(var, new_bound);
   }
   return true;
 }
@@ -345,9 +464,9 @@ bool Model_Manager::global_propagation()
 {
   std::vector<size_t> fixed_idxs;
   for (auto& model_var : m_var_list)
-    if (model_var.is_fixed())
+    if (var_is_fixed(model_var))
     {
-      model_var.set_type(Var_Type::fixed);
+      set_var_type(model_var, Var_Type::fixed);
       fixed_idxs.push_back(model_var.idx());
     }
   while (fixed_idxs.size() > 0)
@@ -374,16 +493,16 @@ bool Model_Manager::global_propagation()
           m_delete_con_num++;
           Model_Var& related_var = m_var_list[model_con.unique_var_idx()];
           if (related_var.type() != Var_Type::fixed &&
-              related_var.is_fixed())
+              var_is_fixed(related_var))
           {
-            related_var.set_type(Var_Type::fixed);
+            set_var_type(related_var, Var_Type::fixed);
             fixed_idxs.push_back(related_var.idx());
             m_infer_var_num++;
           }
         }
         else if (model_con.term_num() == 0)
         {
-          if (model_con.verify_empty_sat())
+          if (empty_con_is_satisfied(model_con))
           {
             model_con.mark_inferred_sat();
             m_delete_con_num++;
@@ -562,14 +681,14 @@ void Model_Manager::classify_con(Model_Con& p_con)
   auto mark_type = [&](Con_Type type) { p_con.add_type(type); };
 
   auto is_integral_value = [&](double value)
-  { return std::fabs(value - std::round(value)) <= k_zero_tolerance; };
+  { return std::fabs(value - std::round(value)) <= m_zero_tolerance; };
 
   auto is_all_unit_coeffs = [&](const std::vector<double>& coeffs)
   {
     if (coeffs.empty())
       return false;
     for (double coeff : coeffs)
-      if (std::fabs(coeff - 1.0) > k_zero_tolerance)
+      if (std::fabs(coeff - 1.0) > m_zero_tolerance)
         return false;
     return true;
   };
@@ -580,7 +699,7 @@ void Model_Manager::classify_con(Model_Con& p_con)
     if (coeffs.empty())
       return false;
     for (double coeff : coeffs)
-      if (std::fabs(coeff + 1.0) > k_zero_tolerance)
+      if (std::fabs(coeff + 1.0) > m_zero_tolerance)
         return false;
     return true;
   };
@@ -590,7 +709,7 @@ void Model_Manager::classify_con(Model_Con& p_con)
       [&](const std::vector<double>& coeffs, double target)
   {
     for (double coeff : coeffs)
-      if (std::fabs(coeff - target) <= k_zero_tolerance)
+      if (std::fabs(coeff - target) <= m_zero_tolerance)
         return true;
     return false;
   };
@@ -616,7 +735,7 @@ void Model_Manager::classify_con(Model_Con& p_con)
     for (size_t idx = 0; idx < term_count; ++idx)
     {
       const auto& var = m_var_list[var_idx_set[idx]];
-      const bool is_bin = var.is_binary();
+      const bool is_bin = var_is_binary(var);
       const bool is_real = var.is_real();
       const bool is_int = var.is_general_integer();
       flags.all_binary &= is_bin;
@@ -656,8 +775,8 @@ void Model_Manager::classify_con(Model_Con& p_con)
   auto classify_aggregation = [&]()
   {
     if (is_eq && term_count == 2 &&
-        std::fabs(coeffs[0]) > k_zero_tolerance &&
-        std::fabs(coeffs[1]) > k_zero_tolerance)
+        std::fabs(coeffs[0]) > m_zero_tolerance &&
+        std::fabs(coeffs[1]) > m_zero_tolerance)
       mark_type(Con_Type::aggregation);
   };
 
@@ -670,9 +789,9 @@ void Model_Manager::classify_con(Model_Con& p_con)
       const auto& var_a = m_var_list[var_idx_set[0]];
       const auto& var_b = m_var_list[var_idx_set[1]];
       const double s = std::max(std::fabs(coeff_a), std::fabs(coeff_b));
-      if (s > k_zero_tolerance &&
+      if (s > m_zero_tolerance &&
           std::fabs(std::fabs(coeff_a) - std::fabs(coeff_b)) <=
-              k_zero_tolerance &&
+              m_zero_tolerance &&
           coeff_a * coeff_b < 0.0 && var_a.type() == var_b.type())
         mark_type(Con_Type::precedence);
     }
@@ -687,14 +806,14 @@ void Model_Manager::classify_con(Model_Con& p_con)
   auto classify_set_partitioning = [&]()
   {
     if (is_eq && term_count > 0 && l_all_binary_variables &&
-        l_is_all_unit_coeffs && std::fabs(rhs - 1.0) <= k_zero_tolerance)
+        l_is_all_unit_coeffs && std::fabs(rhs - 1.0) <= m_zero_tolerance)
       mark_type(Con_Type::set_partitioning);
   };
 
   auto classify_set_packing = [&]()
   {
     if (is_leq && term_count > 0 && l_all_binary_variables &&
-        l_is_all_unit_coeffs && std::fabs(rhs - 1.0) <= k_zero_tolerance)
+        l_is_all_unit_coeffs && std::fabs(rhs - 1.0) <= m_zero_tolerance)
       mark_type(Con_Type::set_packing);
   };
 
@@ -702,7 +821,7 @@ void Model_Manager::classify_con(Model_Con& p_con)
   {
     if (is_leq && term_count > 0 && l_all_binary_variables &&
         l_is_all_neg_unit_coeffs &&
-        std::fabs(rhs + 1.0) <= k_zero_tolerance)
+        std::fabs(rhs + 1.0) <= m_zero_tolerance)
       mark_type(Con_Type::set_covering);
   };
 
@@ -710,7 +829,7 @@ void Model_Manager::classify_con(Model_Con& p_con)
   {
     if (is_eq && term_count > 0 && l_all_binary_variables &&
         l_is_all_unit_coeffs && is_integral_value(rhs) &&
-        rhs >= 2.0 - k_zero_tolerance)
+        rhs >= 2.0 - m_zero_tolerance)
       mark_type(Con_Type::cardinality);
   };
 
@@ -718,21 +837,21 @@ void Model_Manager::classify_con(Model_Con& p_con)
   {
     if (is_leq && term_count > 0 && l_all_binary_variables &&
         l_is_all_unit_coeffs && is_integral_value(rhs) &&
-        rhs >= 2.0 - k_zero_tolerance)
+        rhs >= 2.0 - m_zero_tolerance)
       mark_type(Con_Type::invariant_knapsack);
   };
 
   auto classify_equation_knapsack = [&]()
   {
     if (is_eq && term_count > 0 && l_all_binary_variables &&
-        is_integral_value(rhs) && rhs >= 2.0 - k_zero_tolerance)
+        is_integral_value(rhs) && rhs >= 2.0 - m_zero_tolerance)
       mark_type(Con_Type::equation_knapsack);
   };
 
   auto classify_bin_packing = [&]()
   {
     if (is_leq && term_count > 0 && l_all_binary_variables &&
-        is_integral_value(rhs) && rhs >= 2.0 - k_zero_tolerance &&
+        is_integral_value(rhs) && rhs >= 2.0 - m_zero_tolerance &&
         has_coeff_equal_to(coeffs, rhs))
       mark_type(Con_Type::bin_packing);
   };
@@ -740,7 +859,7 @@ void Model_Manager::classify_con(Model_Con& p_con)
   auto classify_knapsack = [&]()
   {
     if (is_leq && term_count > 0 && l_all_binary_variables &&
-        is_integral_value(rhs) && rhs >= 2.0 - k_zero_tolerance)
+        is_integral_value(rhs) && rhs >= 2.0 - m_zero_tolerance)
       mark_type(Con_Type::knapsack);
   };
 

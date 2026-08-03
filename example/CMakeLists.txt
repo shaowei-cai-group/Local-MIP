@@ -163,6 +163,20 @@ target_link_libraries(model_api_demo PRIVATE
     Threads::Threads
 )
 
+# shared-model parallel multi-seed example
+add_executable(parallel_multiseed_demo
+    parallel-multiseed/parallel_multiseed.cpp
+)
+
+target_include_directories(parallel_multiseed_demo PRIVATE
+    ${EXAMPLE_INCLUDE_DIRS}
+)
+
+target_link_libraries(parallel_multiseed_demo PRIVATE
+    ${LOCALMIP_LIB}
+    Threads::Threads
+)
+
 # Set output directories
 set_target_properties(simple_api_demo PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/simple-api
@@ -198,6 +212,10 @@ set_target_properties(neighbor_userdata_demo PROPERTIES
 
 set_target_properties(model_api_demo PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/model-api
+)
+
+set_target_properties(parallel_multiseed_demo PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/parallel-multiseed
 )
 
 message(STATUS "LocalMIP library: ${LOCALMIP_LIB}")

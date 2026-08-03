@@ -62,7 +62,7 @@ clean_build() {
     # Clean executables in example directories
     for demo in simple-api start-callback restart-callback weight-callback \
                 scoring-lift scoring-neighbor neighbor-config neighbor-userdata \
-                model-api; do
+                model-api parallel-multiseed; do
         if [ -d "$demo" ]; then
             while IFS= read -r -d '' file; do
                 if [ -x "$file" ]; then
@@ -137,6 +137,7 @@ demos=(
     "neighbor-config/neighbor_config_demo"
     "neighbor-userdata/neighbor_userdata_demo"
     "model-api/model_api_demo"
+    "parallel-multiseed/parallel_multiseed_demo"
 )
 
 for demo in "${demos[@]}"; do

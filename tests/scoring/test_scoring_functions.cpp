@@ -334,18 +334,9 @@ protected:
   void execute() override
   {
     Scoring scoring;
-    bool callback_set = false;
-
-    // Set callback: callback should override default method
     scoring.set_lift_cbk(
-        [&](Scoring::Lift_Ctx& ctx, size_t var_idx, double delta, void* user_data)
-        {
-          // Callback function
-        });
-
-    callback_set = true;
-    check(callback_set, "Callback should be settable");
-    check(true, "Callback mechanism is configured");
+        [](Scoring::Lift_Ctx&, size_t, double, void*) {});
+    check(scoring.has_lift_callback(), "Callback should be settable");
   }
 };
 

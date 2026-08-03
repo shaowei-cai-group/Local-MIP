@@ -13,11 +13,11 @@
 
 #pragma once
 #include "../local_search/Local_Search.h"
-#include "../model_api/Model_API.h"
 #include "../model_data/Model_Manager.h"
-#include "../reader/Model_Reader.h"
+#include "../model_data/Prepared_Model.h"
 #include "utils/global_defs.h"
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -38,6 +38,12 @@ private:
 
   double m_time_limit;
 
+  std::chrono::steady_clock::time_point m_run_start;
+
+  std::recursive_mutex m_lifecycle_mutex;
+
+  bool m_run_started;
+
   std::thread m_timeout_thread;
 
   std::mutex m_timeout_mutex;
@@ -54,15 +60,14 @@ private:
 
   bool m_log_obj_enabled;
 
-  std::unique_ptr<Model_Reader> m_reader;
+  std::unique_ptr<Model_Manager> m_owned_model_manager;
 
-  std::unique_ptr<Model_Manager> m_model_manager;
+  std::shared_ptr<const Prepared_Model> m_prepared_model;
 
   std::unique_ptr<Local_Search> m_local_search;
 
-  std::unique_ptr<Model_API> m_model_api;
-
-  bool m_use_model_api;
+  Local_MIP(std::unique_ptr<Model_Manager> p_owned_model_manager,
+            std::shared_ptr<const Prepared_Model> p_prepared_model);
 
   void request_timeout_stop();
 
@@ -74,12 +79,19 @@ private:
 
   void obj_log_handler();
 
-  void prepare_reader();
+  double elapsed_seconds() const;
 
-  bool check_model_api() const;
+  Model_Manager& mutable_model_manager();
+
+  std::unique_lock<std::recursive_mutex> lock_configuration();
+
+  void run_impl();
 
 public:
   Local_MIP();
+
+  explicit Local_MIP(
+      std::shared_ptr<const Prepared_Model> p_prepared_model);
 
   ~Local_MIP();
 
@@ -173,40 +185,6 @@ public:
   void set_tabu_variation(size_t p_value);
 
   void set_break_eq_feas(bool p_enable);
-
-  void enable_model_api();
-
-  void set_sense(Model_API::Sense p_sense);
-
-  bool set_obj_offset(double p_offset);
-
-  int add_var(const std::string& p_name,
-              double p_lb,
-              double p_ub,
-              double p_cost = 0.0,
-              Var_Type p_type = Var_Type::real);
-
-  bool set_cost(int p_col, double p_cost);
-
-  bool set_cost(const std::string& p_name, double p_cost);
-
-  int add_con(double p_lb,
-              double p_ub,
-              const std::vector<int>& p_cols,
-              const std::vector<double>& p_coefs);
-
-  int add_con(double p_lb,
-              double p_ub,
-              const std::vector<std::string>& p_names,
-              const std::vector<double>& p_coefs);
-
-  bool add_var_to_con(int p_row, int p_col, double p_coef);
-
-  bool add_var_to_con(int p_row, const std::string& p_name, double p_coef);
-
-  bool set_integrality(int p_col, Var_Type p_type);
-
-  bool set_integrality(const std::string& p_name, Var_Type p_type);
 
   void run();
 

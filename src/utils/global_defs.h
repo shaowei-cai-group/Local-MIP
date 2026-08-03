@@ -14,11 +14,8 @@
 #pragma once
 
 #include <cassert>
-#include <chrono>
 #include <cmath>
 #include <limits>
-#include <stdlib.h>
-#include <sys/time.h>
 
 #ifdef DEBUG
 #define D_P(...) printf(__VA_ARGS__)
@@ -28,8 +25,6 @@
 #define DEBUG_CALL(...)
 #endif
 
-extern std::chrono::steady_clock::time_point g_clk_start;
-
 const double k_inf = 1e20;
 
 const double k_neg_inf = -k_inf;
@@ -38,11 +33,11 @@ const double k_default_integer_upper_bound = 1.0;
 
 const double k_default_lower_bound = 0.0;
 
-extern double k_feas_tolerance;
+inline constexpr double k_default_feas_tolerance = 1e-6;
 
-extern double k_opt_tolerance;
+inline constexpr double k_default_opt_tolerance = 1e-4;
 
-extern double k_zero_tolerance;
+inline constexpr double k_default_zero_tolerance = 1e-9;
 
 inline constexpr double k_max_time_limit = 1e8;
 
@@ -52,10 +47,16 @@ inline constexpr double k_max_opt_tolerance = 1.0;
 
 inline constexpr double k_max_zero_tolerance = 1e-3;
 
-inline bool is_integral_within_tolerance(double p_value)
+inline bool is_effectively_zero(double p_value, double p_tolerance)
+{
+  return p_value == 0.0 || std::fabs(p_value) < p_tolerance;
+}
+
+inline bool is_integral_within_tolerance(double p_value,
+                                         double p_feas_tolerance)
 {
   return std::isfinite(p_value) &&
-         std::fabs(p_value - std::round(p_value)) <= k_feas_tolerance;
+         std::fabs(p_value - std::round(p_value)) <= p_feas_tolerance;
 }
 
 inline bool fits_in_long_long(double p_value)
@@ -117,7 +118,5 @@ enum class Con_Type
 
   general_inequality // general linear inequality constraint (<=)
 };
-
-double elapsed_time();
 
 const char* con_type_str(Con_Type p_type);

@@ -251,7 +251,8 @@ public:
 
   using Neighbor_Cbk = Neighbor::Neighbor_Cbk;
 
-  Local_Search(const Model_Manager* p_model_manager);
+  explicit Local_Search(const Model_Manager* p_model_manager,
+                        double p_opt_tolerance = k_default_opt_tolerance);
 
   ~Local_Search();
 
@@ -275,6 +276,8 @@ public:
   void set_sol_path(const std::string& p_sol_path);
 
   void set_random_seed(uint32_t p_seed);
+
+  void set_opt_tolerance(double p_value) noexcept;
 
   void set_start_cbk(Start_Cbk p_start_cbk, void* p_user_data = nullptr);
 
@@ -343,18 +346,18 @@ inline bool Local_Search::con_sat(size_t p_con_idx) const
 {
   double gap = m_con_activity[p_con_idx] - m_con_constant[p_con_idx];
   if (m_con_is_equality[p_con_idx])
-    return std::fabs(gap) <= k_feas_tolerance;
+    return std::fabs(gap) <= m_model_manager->feas_tolerance();
   else
-    return gap <= k_feas_tolerance;
+    return gap <= m_model_manager->feas_tolerance();
 }
 
 inline bool Local_Search::con_unsat(size_t p_con_idx) const
 {
   double gap = m_con_activity[p_con_idx] - m_con_constant[p_con_idx];
   if (m_con_is_equality[p_con_idx])
-    return std::fabs(gap) > k_feas_tolerance;
+    return std::fabs(gap) > m_model_manager->feas_tolerance();
   else
-    return gap > k_feas_tolerance;
+    return gap > m_model_manager->feas_tolerance();
 }
 
 inline void Local_Search::insert_unsat(size_t p_con_idx)
@@ -402,7 +405,7 @@ inline void Local_Search::update_best_solution()
          m_var_current_value.data(),
          m_var_num * sizeof(double));
   m_best_obj = m_con_activity[0];
-  m_con_constant[0] = m_best_obj - k_opt_tolerance;
+  m_con_constant[0] = m_best_obj - m_readonly_ctx.m_opt_tolerance;
   m_current_obj_breakthrough = false;
   publish_best_obj();
 }

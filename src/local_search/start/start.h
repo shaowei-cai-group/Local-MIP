@@ -58,7 +58,9 @@ private:
   enum class Method
   {
     zero,
-    random
+    random,
+    objective_guided,
+    lock_guided
   };
 
   Start_Cbk m_user_cbk;
@@ -70,4 +72,16 @@ private:
   void zero_start(Start_Ctx& p_ctx) const;
 
   void random_start(Start_Ctx& p_ctx) const;
+
+  void objective_guided_start(Start_Ctx& p_ctx) const;
+
+  void lock_guided_start(Start_Ctx& p_ctx) const;
+
+  double closest_to_zero(const Model_Var& p_model_var) const;
+
+  double select_bound(double p_preferred_bound,
+                      const Model_Var& p_model_var) const;
+
+  double objective_guided_value(const Start_Ctx& p_ctx,
+                                size_t p_var_idx) const;
 };

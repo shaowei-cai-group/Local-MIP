@@ -91,9 +91,9 @@ private:
 
   size_t m_bms_op;
 
-  static std::vector<size_t> m_bms_idxs;
+  std::vector<size_t> m_bms_idxs;
 
-  static std::unordered_map<size_t, size_t> m_remap;
+  std::unordered_map<size_t, size_t> m_remap;
 
   void explore_unsat_mtm_bm(Neighbor_Ctx& p_ctx);
 
@@ -105,7 +105,7 @@ private:
 
   void explore_unsat_random_bm(Neighbor_Ctx& p_ctx);
 
-  static inline const std::vector<size_t>&
+  inline const std::vector<size_t>&
   sample_idxs(const std::vector<size_t>& p_source_idxs,
               size_t p_max_sample,
               size_t& p_final_size,

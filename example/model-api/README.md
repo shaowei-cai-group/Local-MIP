@@ -15,21 +15,22 @@ The Model API provides a modeling interface similar to solvers like HiGHS and SC
 
 ### Model Building
 
-- `enable_model_api()` — Enable the modeling API (must be called first)
-- `set_sense(Sense)` — Set optimization direction (`maximize` or `minimize`)
-- `set_obj_offset(double)` — Set objective function offset
-- `add_var(name, lb, ub, cost, type)` — Add a variable
-- `set_cost(col/name, cost)` — Modify variable objective coefficient
-- `add_con(lb, ub, cols/names, coefs)` — Add a constraint
-- `add_var_to_con(row, col/name, coef)` — Add variable to existing constraint
-- `set_integrality(col/name, type)` — Modify variable type
+- `Model_Builder::set_sense(Sense)` — Set optimization direction
+- `Model_Builder::set_obj_offset(double)` — Set objective offset
+- `Model_Builder::add_var(...)` — Add a variable
+- `Model_Builder::set_cost(...)` — Modify an objective coefficient
+- `Model_Builder::add_con(...)` — Add a constraint
+- `Model_Builder::add_var_to_con(...)` — Extend a constraint
+- `Model_Builder::set_integrality(...)` — Modify a variable type
+- `Model_Builder::prepare(options)` — Normalize and freeze the model
 
 ### Solver Settings
 
 - `set_time_limit(seconds)` — Set time limit
 - `set_log_obj(bool)` — Enable/disable objective value logging
-- `set_bound_strengthen(level)` — Set bound strengthening level
 - `set_random_seed(seed)` — Set random seed
+
+Model preparation settings such as `bound_strengthen` belong to `Model_Prepare_Options`, not to a solver created from a prepared model.
 
 ### Result Query
 
@@ -42,7 +43,7 @@ The Model API provides a modeling interface similar to solvers like HiGHS and SC
 
 ```cpp
 #include "local_mip/Local_MIP.h"
-#include "model_api/Model_API.h"
+#include "model_api/Model_Builder.h"
 #include <iostream>
 #include <vector>
 
@@ -50,45 +51,41 @@ int main()
 {
   const double inf = std::numeric_limits<double>::infinity();
   
-  // Create solver and enable Model API
-  Local_MIP solver;
-  solver.enable_model_api();
-  
-  // Set optimization sense
-  solver.set_sense(Model_API::Sense::maximize);
-  
-  // Set solver parameters
-  solver.set_time_limit(1.0);
-  solver.set_log_obj(true);
+  Model_Builder builder;
+  builder.set_sense(Model_Builder::Sense::maximize);
   
   // Add variables
-  int x1 = solver.add_var("x1", 0.0, 40.0, 1.0, Var_Type::real);
-  int x2 = solver.add_var("x2", 0.0, inf, 2.0, Var_Type::real);
-  int x3 = solver.add_var("x3", 0.0, inf, 3.0, Var_Type::real);
-  int x4 = solver.add_var("x4", 2.0, 3.0, 1.0, Var_Type::general_integer);
+  int x1 = builder.add_var("x1", 0.0, 40.0, 1.0, Var_Type::real);
+  int x2 = builder.add_var("x2", 0.0, inf, 2.0, Var_Type::real);
+  int x3 = builder.add_var("x3", 0.0, inf, 3.0, Var_Type::real);
+  int x4 = builder.add_var(
+      "x4", 2.0, 3.0, 1.0, Var_Type::general_integer);
   
   // Add constraints using variable indices
   // Constraint: -x1 + x2 + x3 + 10*x4 <= 20
-  solver.add_con(-inf, 20.0,
-                 std::vector<int>{x1, x2, x3, x4},
-                 std::vector<double>{-1.0, 1.0, 1.0, 10.0});
+  builder.add_con(-inf, 20.0,
+                  std::vector<int>{x1, x2, x3, x4},
+                  std::vector<double>{-1.0, 1.0, 1.0, 10.0});
   
   // Constraint: x1 - 3*x2 + x3 <= 30
-  solver.add_con(-inf, 30.0,
-                 std::vector<int>{x1, x2, x3},
-                 std::vector<double>{1.0, -3.0, 1.0});
+  builder.add_con(-inf, 30.0,
+                  std::vector<int>{x1, x2, x3},
+                  std::vector<double>{1.0, -3.0, 1.0});
   
   // Equality constraint: x2 - 3.5*x4 = 0
-  solver.add_con(0.0, 0.0,
-                 std::vector<int>{x2, x4},
-                 std::vector<double>{1.0, -3.5});
+  builder.add_con(0.0, 0.0,
+                  std::vector<int>{x2, x4},
+                  std::vector<double>{1.0, -3.5});
   
   // Alternative: Add constraints using variable names
-  // solver.add_con(-inf, 20.0,
-  //                std::vector<std::string>{"x1", "x2", "x3", "x4"},
-  //                std::vector<double>{-1.0, 1.0, 1.0, 10.0});
+  // builder.add_con(-inf, 20.0,
+  //                 std::vector<std::string>{"x1", "x2", "x3", "x4"},
+  //                 std::vector<double>{-1.0, 1.0, 1.0, 10.0});
   
-  // Run solver
+  auto model = builder.prepare();
+  Local_MIP solver(model);
+  solver.set_time_limit(1.0);
+  solver.set_log_obj(true);
   solver.run();
   
   // Get results
@@ -163,9 +160,6 @@ g++ -O3 -std=c++20 model_api_demo.cpp -I../../src -L../../build -lLocalMIP -lpth
 ## Expected Output
 
 ```
-c Model API enabled for programmatic model building
-c time limit is set to : 1.00 seconds
-c log obj is set to : true
 Building model...
 Added 4 variables: x1, x2, x3, x4
 Added 3 constraints
@@ -176,27 +170,30 @@ Model Summary:
   Constraints: 3
   Time limit: 1 seconds
 
-Starting solver...
-=====================================
-c Building model from API...
 Building model with 4 variables and 3 constraints...
 Model built successfully.
 ...
-o best objective: 23
+c time limit is set to : 1.00 seconds
+c log obj is set to : true
+
+Starting solver...
+=====================================
+...
+o best objective: 122.5
 
 Results:
-  Objective value: 23
+  Objective value: 122.5
   Feasible: Yes
   Solution:
-    x1 = 7
-    x2 = 7
-    x3 = 0
-    x4 = 2
+    x1 = 40
+    x2 = 10.5
+    x3 = 19.5
+    x4 = 3
 ```
 
 ## Key Points
 
-1. **Must call `enable_model_api()` first** before using any modeling API methods
+1. **Prepare before solving**: finish model construction, then call `prepare()`
 2. **Variable indices** start from 0 and increment sequentially
 3. **Constraint bounds**: `[lb, ub]` represents `lb <= expr <= ub`
 4. **Unbounded bounds**: Use `std::numeric_limits<double>::infinity()`

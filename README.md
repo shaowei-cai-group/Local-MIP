@@ -93,6 +93,10 @@ Format rules:
 - Command line arguments override values from the configuration file
 - See `default.set` for descriptions and valid ranges
 
+### Built-in initial solution methods
+
+Built-in initial solution methods are selected with `--start` (or `start` in a parameter file): `zero`, `random`, `objective`, and `locks`. `objective` chooses finite bounds using the preprocessed minimization objective, while `locks` chooses the direction with fewer constraint locks and uses objective guidance to break ties. The default remains `zero`.
+
 ### Warm-start domain validation
 
 Warm-start `.sol` files may omit variables. Omitted variables use the solver's zero-start strategy: zero when it is inside the variable bounds, otherwise the nearest bound. Values within `feas_tolerance` of an integer or a variable bound are canonicalized; clearly fractional integer values, non-finite values, and values outside the bounds are rejected. A warm start may violate linear constraints because the local search is responsible for repairing them. Start/restart callbacks and custom moves use the same variable-domain checks.
@@ -104,7 +108,7 @@ CTest targets are defined in `tests/CMakeLists.txt`.
 cd build
 
 # Run unit test subset
-ctest --output-on-failure -R "^(api|callbacks|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config)$"
+ctest --output-on-failure -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config|shared_model)$"
 
 # Run integration tests
 ctest --output-on-failure -R "^integration$"
@@ -129,7 +133,31 @@ If you want to **build a MIP model from code** (instead of reading `.mps/.lp`), 
 - **C++ demo**: `example/model-api/model_api_demo.cpp` (see `example/model-api/README.md`)
 - **Python demo**: `python-bindings/model_api_demo.py` (requires the pybind11 module)
 
-Important: Model API usage is single-run. Build the model once, call `run` once, and do not add variables/constraints after `run`. To solve again, create a new model instance.
+Build with `Model_Builder`, call `prepare()`, then pass the resulting `Prepared_Model` to one or more `Local_MIP` instances.
+
+### Shared prepared models and external multi-seed parallelism
+
+Use `Prepared_Model` when several independent solvers need to search the same frozen model without copying its variables, constraints, matrix, or presolve results:
+
+```cpp
+Model_Prepare_Options options;
+auto model = Prepared_Model::from_file("instance.mps", options);
+
+Local_MIP seed_1(model);
+Local_MIP seed_2(model);
+seed_1.set_random_seed(1);
+seed_2.set_random_seed(2);
+```
+
+The application can run these solvers in separate `std::thread`s. Each `Local_MIP` still runs one single-threaded search trajectory.
+
+Model preparation options (`feas_tolerance`, `zero_tolerance`, `bound_strengthen`, and `split_eq`) belong to the shared model and cannot be changed afterward.
+Search settings, RNG state, callbacks, timers, and solutions belong to each solver.
+
+Each `Local_MIP` instance is single-use: configure it, call `run()` once, and then read its result. The first call consumes the solver even if it throws. Create a new solver for another seed or model; new solvers can reuse the same `Prepared_Model` without copying it.
+
+For in-memory models, include `model_api/Model_Builder.h`, build with `Model_Builder`, and call `prepare(options)`.
+See `example/parallel-multiseed/` for a complete caller-managed four-seed run.
 
 Build & run (one-time):
 ```bash
@@ -158,6 +186,7 @@ cd example
 Notable demo directories:
 - `simple-api/` – minimal solver usage
 - `model-api/` – build models programmatically via the Model API
+- `parallel-multiseed/` – share one frozen model across caller-owned threads
 - `start-callback/`, `restart-callback/`, `weight-callback/` – callback hooks
 - `scoring-lift/`, `scoring-neighbor/` – custom scoring in feasible/infeasible phases
 - `neighbor-config/`, `neighbor-userdata/` – neighbor configuration and custom operators

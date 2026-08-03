@@ -12,22 +12,6 @@
 =====================================================================================*/
 
 #include "global_defs.h"
-#include <cctype>
-#include <chrono>
-#include <cstdio>
-
-std::chrono::steady_clock::time_point g_clk_start;
-
-double k_feas_tolerance = 1e-6;
-double k_opt_tolerance = 1e-4;
-double k_zero_tolerance = 1e-9;
-
-double elapsed_time()
-{
-  return std::chrono::duration_cast<std::chrono::duration<double>>(
-             std::chrono::steady_clock::now() - g_clk_start)
-      .count();
-}
 
 const char* con_type_str(Con_Type type)
 {

@@ -43,6 +43,17 @@ add_test(NAME callbacks
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # =============================================================================
+# Built-in Start Strategy Tests
+# =============================================================================
+add_executable(start_strategies_test start/test_start_strategies.cpp)
+target_link_libraries(start_strategies_test PRIVATE LocalMIP::core)
+target_include_directories(start_strategies_test PRIVATE ${TEST_UTILS_INCLUDE})
+
+add_test(NAME start_strategies
+  COMMAND $<TARGET_FILE:start_strategies_test>
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# =============================================================================
 # Constraint Type Recognition Tests
 # =============================================================================
 add_executable(constraint_recognition_test
@@ -126,20 +137,36 @@ add_test(NAME neighbor_config
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # =============================================================================
+# Shared Prepared_Model Tests
+# =============================================================================
+add_executable(shared_model_test shared_model/test_shared_model.cpp)
+target_link_libraries(shared_model_test PRIVATE LocalMIP::core)
+target_include_directories(shared_model_test PRIVATE ${TEST_UTILS_INCLUDE})
+target_compile_definitions(shared_model_test PRIVATE
+  TEST_MPS_PATH="${TEST_MPS_FILE}"
+  TEST_LP_PATH="${TEST_LP_FILE}")
+
+add_test(NAME shared_model
+  COMMAND $<TARGET_FILE:shared_model_test>
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# =============================================================================
 # Custom Test Targets
 # =============================================================================
 # Run all unit tests (excluding instance tests)
 add_custom_target(unit-tests
   COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    -R "^(api|callbacks|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config)$$"
+    -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config|shared_model)$$"
   DEPENDS local_mip_api_test
           local_mip_callbacks_test
+          start_strategies_test
           constraint_recognition_test
           scoring_test
           model_manager_test
           reader_test
           move_operations_test
           neighbor_config_test
+          shared_model_test
   COMMENT "Running unit tests"
   VERBATIM)
 
@@ -156,12 +183,14 @@ add_custom_target(run-all-tests
   DEPENDS Local-MIP
           local_mip_api_test
           local_mip_callbacks_test
+          start_strategies_test
           constraint_recognition_test
           scoring_test
           model_manager_test
           reader_test
           move_operations_test
           neighbor_config_test
+          shared_model_test
           integration_test
   COMMENT "Running all tests including instance tests"
   VERBATIM)
@@ -169,15 +198,17 @@ add_custom_target(run-all-tests
 # Default run-tests target
 add_custom_target(run-tests
   COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    -R "^(api|callbacks|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config|integration)$$"
+    -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config|shared_model|integration)$$"
   DEPENDS local_mip_api_test
           local_mip_callbacks_test
+          start_strategies_test
           constraint_recognition_test
           scoring_test
           model_manager_test
           reader_test
           move_operations_test
           neighbor_config_test
+          shared_model_test
           integration_test
   COMMENT "Running all tests (unit + integration, excluding instance tests)"
   VERBATIM)
@@ -188,14 +219,16 @@ add_custom_target(run-tests
 # Quick tests: run unit tests only, skip integration and instance tests
 add_custom_target(quick-tests
   COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    -R "^(api|callbacks|constraint_recognition|scoring|model_manager|reader|move_operations)$$"
+    -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|shared_model)$$"
   DEPENDS local_mip_api_test
           local_mip_callbacks_test
+          start_strategies_test
           constraint_recognition_test
           scoring_test
           model_manager_test
           reader_test
           move_operations_test
+          shared_model_test
   COMMENT "Running quick unit tests"
   VERBATIM)
 

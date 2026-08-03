@@ -30,6 +30,10 @@ class Model_Manager
 private:
   int m_bound_strengthen;
 
+  double m_feas_tolerance;
+
+  double m_zero_tolerance;
+
   std::unordered_map<std::string, size_t> m_var_name_to_idx;
 
   std::unordered_map<std::string, size_t> m_con_name_to_idx;
@@ -80,12 +84,13 @@ private:
   bool m_split_eq;
 
 public:
-  Model_Manager();
+  explicit Model_Manager(
+      double p_feas_tolerance = k_default_feas_tolerance,
+      double p_zero_tolerance = k_default_zero_tolerance);
 
   ~Model_Manager();
 
-  size_t make_var(const std::string& p_name,
-                  bool p_requires_integrality);
+  size_t make_var(const std::string& p_name, bool p_requires_integrality);
 
   size_t make_con(const std::string& p_name, const char p_type = '<');
 
@@ -105,9 +110,23 @@ public:
 
   inline Model_Con& con(const std::string& p_name);
 
+  void set_var_type(Model_Var& p_var, Var_Type p_type);
+
+  void set_var_lower_bound(Model_Var& p_var, double p_lower_bound);
+
+  void set_var_upper_bound(Model_Var& p_var, double p_upper_bound);
+
   inline void set_bound_strengthen(const int p_enable);
 
   inline void set_split_eq(bool p_enable);
+
+  inline void set_feas_tolerance(double p_value);
+
+  inline void set_zero_tolerance(double p_value);
+
+  bool var_in_bound(const Model_Var& p_var, double p_value) const;
+
+  bool normalize_var_value(const Model_Var& p_var, double& p_value) const;
 
   bool process_after_read();
 
@@ -135,6 +154,14 @@ public:
 
   inline double obj_offset() const;
 
+  inline int bound_strengthen() const;
+
+  inline bool split_eq() const;
+
+  inline double feas_tolerance() const;
+
+  inline double zero_tolerance() const;
+
   inline size_t var_id_to_obj_idx(const size_t p_var_idx) const;
 
   inline const std::unordered_map<std::string, size_t>&
@@ -153,6 +180,16 @@ public:
   inline const std::vector<double>& var_obj_cost() const;
 
 private:
+  void normalize_integral_bounds(Model_Var& p_var) const;
+
+  bool canonicalize_var_bounds(Model_Var& p_var) const;
+
+  bool var_is_fixed(const Model_Var& p_var) const;
+
+  bool var_is_binary(const Model_Var& p_var) const;
+
+  bool empty_con_is_satisfied(const Model_Con& p_con) const;
+
   bool tighten_bounds();
 
   bool global_propagation();
@@ -216,6 +253,26 @@ inline int Model_Manager::is_min() const
 inline double Model_Manager::obj_offset() const
 {
   return m_obj_offset;
+}
+
+inline int Model_Manager::bound_strengthen() const
+{
+  return m_bound_strengthen;
+}
+
+inline bool Model_Manager::split_eq() const
+{
+  return m_split_eq;
+}
+
+inline double Model_Manager::feas_tolerance() const
+{
+  return m_feas_tolerance;
+}
+
+inline double Model_Manager::zero_tolerance() const
+{
+  return m_zero_tolerance;
 }
 
 inline size_t Model_Manager::var_id_to_obj_idx(size_t p_var_idx) const
@@ -315,6 +372,16 @@ void Model_Manager::set_bound_strengthen(const int p_level)
 inline void Model_Manager::set_split_eq(bool p_enable)
 {
   m_split_eq = p_enable;
+}
+
+inline void Model_Manager::set_feas_tolerance(double p_value)
+{
+  m_feas_tolerance = p_value;
+}
+
+inline void Model_Manager::set_zero_tolerance(double p_value)
+{
+  m_zero_tolerance = p_value;
 }
 
 inline const std::vector<size_t>& Model_Manager::binary_idx_list() const

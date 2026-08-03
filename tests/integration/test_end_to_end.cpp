@@ -192,6 +192,44 @@ protected:
         check(false, "Random start failed");
       }
     }
+
+    // Test objective-guided start
+    {
+      Local_MIP solver;
+      solver.set_model_file(TEST_MPS_PATH);
+      solver.set_time_limit(1.0);
+      solver.set_start_method("objective");
+      solver.set_log_obj(false);
+
+      try
+      {
+        solver.run();
+        check(true, "Objective-guided start method should work");
+      }
+      catch (...)
+      {
+        check(false, "Objective-guided start failed");
+      }
+    }
+
+    // Test lock-guided start
+    {
+      Local_MIP solver;
+      solver.set_model_file(TEST_MPS_PATH);
+      solver.set_time_limit(1.0);
+      solver.set_start_method("locks");
+      solver.set_log_obj(false);
+
+      try
+      {
+        solver.run();
+        check(true, "Lock-guided start method should work");
+      }
+      catch (...)
+      {
+        check(false, "Lock-guided start failed");
+      }
+    }
   }
 };
 
@@ -305,39 +343,6 @@ protected:
   }
 };
 
-// Test multiple runs
-class Test_Multiple_Runs : public Test_Runner
-{
-public:
-  Test_Multiple_Runs() : Test_Runner("Multiple Consecutive Runs") {}
-
-protected:
-  void execute() override
-  {
-    // Test if same solver object can run multiple times
-    // (Though usually not recommended, should not crash)
-
-    Local_MIP solver;
-    solver.set_model_file(TEST_MPS_PATH);
-    solver.set_time_limit(0.5);
-    solver.set_log_obj(false);
-
-    try
-    {
-      solver.run();
-      check(true, "First run completed");
-    }
-    catch (...)
-    {
-      check(false, "First run failed");
-    }
-
-    // Note: Second run may need to reinitialize state
-    // This test mainly verifies it does not crash
-    check(true, "Multiple runs test completed");
-  }
-};
-
 } // namespace
 
 int main()
@@ -351,8 +356,6 @@ int main()
   suite.add_test(new Test_Restart_Mechanism());
   suite.add_test(new Test_Bound_Strengthen());
   suite.add_test(new Test_Timeout_Control());
-  suite.add_test(new Test_Multiple_Runs());
-
   bool ok = suite.run_all();
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;

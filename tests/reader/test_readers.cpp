@@ -431,9 +431,9 @@ protected:
     manager.make_con("");
     size_t var_idx = manager.make_var("x", false);
     auto& var = manager.var(var_idx);
-    var.set_type(Var_Type::binary);
-    var.set_lower_bound(0.0);
-    var.set_upper_bound(1.0);
+    manager.set_var_type(var, Var_Type::binary);
+    manager.set_var_lower_bound(var, 0.0);
+    manager.set_var_upper_bound(var, 1.0);
     check(manager.process_after_read(),
           "Simple binary model should be valid");
 
@@ -469,7 +469,8 @@ protected:
       return;
     }
     std::fprintf(fp, "Variable name        Variable value\n");
-    std::fprintf(fp, "x %.15g\n", 1.0 - 0.5 * k_feas_tolerance);
+    std::fprintf(
+        fp, "x %.15g\n", 1.0 - 0.5 * k_default_feas_tolerance);
     std::fclose(fp);
 
     result = Sol_Reader::read(near_file, manager, solution, &present);
@@ -843,7 +844,7 @@ protected:
     reader.read(m_mps_file);
     check(manager.process_after_read(),
           "BV without a value should produce a valid model");
-    check(manager.var("x").is_binary(),
+    check(manager.var("x").type() == Var_Type::binary,
           "BV without a value should declare a binary variable");
     std::remove(m_mps_file);
 
