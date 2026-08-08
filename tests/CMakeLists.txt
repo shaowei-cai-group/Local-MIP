@@ -151,12 +151,25 @@ add_test(NAME shared_model
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # =============================================================================
+# Activity Arithmetic Tests
+# =============================================================================
+add_executable(activity_arithmetic_test
+  numerics/test_activity_arithmetic.cpp)
+target_link_libraries(activity_arithmetic_test PRIVATE LocalMIP::core)
+target_include_directories(activity_arithmetic_test PRIVATE
+  ${TEST_UTILS_INCLUDE})
+
+add_test(NAME activity_arithmetic
+  COMMAND $<TARGET_FILE:activity_arithmetic_test>
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# =============================================================================
 # Custom Test Targets
 # =============================================================================
 # Run all unit tests (excluding instance tests)
 add_custom_target(unit-tests
   COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config|shared_model)$$"
+    -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config|shared_model|activity_arithmetic)$$"
   DEPENDS local_mip_api_test
           local_mip_callbacks_test
           start_strategies_test
@@ -167,6 +180,7 @@ add_custom_target(unit-tests
           move_operations_test
           neighbor_config_test
           shared_model_test
+          activity_arithmetic_test
   COMMENT "Running unit tests"
   VERBATIM)
 
@@ -191,6 +205,7 @@ add_custom_target(run-all-tests
           move_operations_test
           neighbor_config_test
           shared_model_test
+          activity_arithmetic_test
           integration_test
   COMMENT "Running all tests including instance tests"
   VERBATIM)
@@ -198,7 +213,7 @@ add_custom_target(run-all-tests
 # Default run-tests target
 add_custom_target(run-tests
   COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config|shared_model|integration)$$"
+    -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config|shared_model|activity_arithmetic|integration)$$"
   DEPENDS local_mip_api_test
           local_mip_callbacks_test
           start_strategies_test
@@ -209,6 +224,7 @@ add_custom_target(run-tests
           move_operations_test
           neighbor_config_test
           shared_model_test
+          activity_arithmetic_test
           integration_test
   COMMENT "Running all tests (unit + integration, excluding instance tests)"
   VERBATIM)
@@ -219,7 +235,7 @@ add_custom_target(run-tests
 # Quick tests: run unit tests only, skip integration and instance tests
 add_custom_target(quick-tests
   COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
-    -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|shared_model)$$"
+    -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|shared_model|activity_arithmetic)$$"
   DEPENDS local_mip_api_test
           local_mip_callbacks_test
           start_strategies_test
@@ -229,6 +245,7 @@ add_custom_target(quick-tests
           reader_test
           move_operations_test
           shared_model_test
+          activity_arithmetic_test
   COMMENT "Running quick unit tests"
   VERBATIM)
 

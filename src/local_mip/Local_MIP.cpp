@@ -674,7 +674,7 @@ void Local_MIP::obj_log_handler()
     {
       last_value = current_value;
       has_value = true;
-      printf("c [%10.2lf] obj*: %-20.15g\n",
+      printf("c [%10.2lf] obj*: %-22.17g\n",
              elapsed_seconds(),
              current_value);
     }

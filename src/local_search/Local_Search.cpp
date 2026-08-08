@@ -32,6 +32,39 @@
 #include <utility>
 #include <vector>
 
+namespace
+{
+
+constexpr uint64_t k_max_exact_binary64_integer = uint64_t{1} << 53;
+
+bool exact_binary64_integer(double p_value, int64_t& p_integer)
+{
+  const double limit = static_cast<double>(k_max_exact_binary64_integer);
+  if (!std::isfinite(p_value) || p_value < -limit || p_value > limit ||
+      std::trunc(p_value) != p_value)
+    return false;
+  p_integer = static_cast<int64_t>(p_value);
+  return static_cast<double>(p_integer) == p_value;
+}
+
+uint64_t integer_magnitude(int64_t p_value)
+{
+  return p_value < 0 ? static_cast<uint64_t>(-p_value)
+                     : static_cast<uint64_t>(p_value);
+}
+
+bool exact_bound_product(uint64_t p_lhs,
+                         uint64_t p_rhs,
+                         uint64_t& p_product)
+{
+  if (p_lhs != 0 && p_rhs > k_max_exact_binary64_integer / p_lhs)
+    return false;
+  p_product = p_lhs * p_rhs;
+  return true;
+}
+
+} // namespace
+
 int Local_Search::run_search(const std::vector<double>& p_start_solution,
                              const std::vector<char>& p_start_mask)
 {
@@ -52,7 +85,7 @@ int Local_Search::run_search(const std::vector<double>& p_start_solution,
     }
     if (m_con_unsat_idxs.empty())
     {
-      if (m_activity_hits > 0)
+      if (m_activity_dirty)
       {
         refresh_activities();
         if (!m_con_unsat_idxs.empty())
@@ -101,7 +134,7 @@ void Local_Search::output_result() const
   if (m_is_unbounded)
   {
     printf("o problem is unbounded.\n");
-    printf("o best objective: %.15g\n", get_obj_value());
+    printf("o best objective: %.17g\n", get_obj_value());
     return;
   }
   if (!m_is_found_feasible)
@@ -111,13 +144,30 @@ void Local_Search::output_result() const
   }
   else
   {
-    printf("o best objective: %.15g\n", get_obj_value());
+    printf("o best objective: %.17g\n", get_obj_value());
     if (m_sol_path != "")
       write_sol();
   }
 }
 
-void Local_Search::refresh_activities()
+template <typename Accumulator>
+Accumulator
+Local_Search::compute_activity(const Model_Con& p_con,
+                               const double* p_var_values) const
+{
+  Accumulator activity = static_cast<Accumulator>(0.0);
+  const auto& coeffs = p_con.coeff_set();
+  const auto& var_idxs = p_con.var_idx_set();
+  for (size_t term_idx = 0; term_idx < coeffs.size(); ++term_idx)
+  {
+    activity += static_cast<Accumulator>(coeffs[term_idx]) *
+                static_cast<Accumulator>(p_var_values[var_idxs[term_idx]]);
+  }
+  return activity;
+}
+
+template <typename Accumulator>
+void Local_Search::refresh_activities_impl()
 {
   m_con_unsat_idxs.clear();
   m_con_sat_idxs.clear();
@@ -127,38 +177,34 @@ void Local_Search::refresh_activities()
   std::fill(m_con_pos_in_sat_idxs.begin(),
             m_con_pos_in_sat_idxs.end(),
             SIZE_MAX);
-  auto& model_obj = m_model_manager->obj();
-  const auto& obj_coeffs = model_obj.coeff_set();
-  const auto& obj_var_idxs = model_obj.var_idx_set();
+  const auto& model_obj = m_model_manager->obj();
   const double* var_values = m_var_current_value.data();
-  long double long_activity = 0.0L;
-  for (size_t term_idx = 0; term_idx < m_obj_var_num; ++term_idx)
-  {
-    size_t var_idx = obj_var_idxs[term_idx];
-    long_activity += static_cast<long double>(obj_coeffs[term_idx]) *
-                     static_cast<long double>(var_values[var_idx]);
-  }
-  m_con_activity[0] = static_cast<double>(long_activity);
+  Accumulator activity =
+      compute_activity<Accumulator>(model_obj, var_values);
+  m_current_obj_breakthrough =
+      activity <= static_cast<Accumulator>(m_con_constant[0]);
+  m_con_activity[0] = static_cast<double>(activity);
   for (size_t con_idx = 1; con_idx < m_con_num; ++con_idx)
   {
-    auto& model_con = m_model_manager->con(con_idx);
-    const auto& coeffs = model_con.coeff_set();
-    const auto& var_idxs = model_con.var_idx_set();
-    const double* coeff_data = coeffs.data();
-    const size_t* var_idx_data = var_idxs.data();
-    long_activity = 0.0L;
-    for (size_t term_idx = 0; term_idx < coeffs.size(); ++term_idx)
-      long_activity +=
-          static_cast<long double>(coeff_data[term_idx]) *
-          static_cast<long double>(var_values[var_idx_data[term_idx]]);
-    m_con_activity[con_idx] = static_cast<double>(long_activity);
-    if (con_unsat(con_idx))
-      insert_unsat(con_idx);
-    else
+    const auto& model_con = m_model_manager->con(con_idx);
+    activity = compute_activity<Accumulator>(model_con, var_values);
+    const bool is_sat = con_sat(con_idx, activity);
+    m_con_activity[con_idx] = static_cast<double>(activity);
+    if (is_sat)
       insert_sat(con_idx);
+    else
+      insert_unsat(con_idx);
   }
   m_activity_hits = 0;
-  m_current_obj_breakthrough = m_con_activity[0] <= m_con_constant[0];
+  m_activity_dirty = false;
+}
+
+void Local_Search::refresh_activities()
+{
+  if (m_use_exact_double_activity)
+    refresh_activities_impl<double>();
+  else
+    refresh_activities_impl<long double>();
 }
 
 void Local_Search::init_state()
@@ -177,6 +223,51 @@ void Local_Search::reset_after_restart()
   refresh_activities();
 }
 
+template <typename Accumulator>
+void Local_Search::update_affected_activities(const Model_Var& p_model_var,
+                                              double p_delta)
+{
+  for (size_t term_idx = 0; term_idx < p_model_var.term_num(); ++term_idx)
+  {
+    const size_t con_idx = p_model_var.con_idx(term_idx);
+    const auto& model_con = m_model_manager->con(con_idx);
+    const size_t pos_in_con = p_model_var.pos_in_con(term_idx);
+    const double coeff = model_con.coeff(pos_in_con);
+    const bool maintain_status = (con_idx != 0);
+    bool was_sat = false;
+    if (maintain_status)
+    {
+      was_sat = m_con_pos_in_sat_idxs[con_idx] != SIZE_MAX;
+      assert(was_sat != (m_con_pos_in_unsat_idxs[con_idx] != SIZE_MAX));
+    }
+    const Accumulator updated_activity =
+        static_cast<Accumulator>(m_con_activity[con_idx]) +
+        static_cast<Accumulator>(coeff) *
+            static_cast<Accumulator>(p_delta);
+    const bool now_sat =
+        maintain_status ? con_sat(con_idx, updated_activity) : false;
+    if (con_idx == 0)
+    {
+      m_current_obj_breakthrough =
+          updated_activity <= static_cast<Accumulator>(m_con_constant[0]);
+    }
+    m_con_activity[con_idx] = static_cast<double>(updated_activity);
+    if (maintain_status)
+    {
+      if (was_sat && !now_sat)
+      {
+        delete_sat(con_idx);
+        insert_unsat(con_idx);
+      }
+      else if (!was_sat && now_sat)
+      {
+        insert_sat(con_idx);
+        delete_unsat(con_idx);
+      }
+    }
+  }
+}
+
 void Local_Search::apply_move(size_t p_var_idx, double p_delta)
 {
   if (p_var_idx == SIZE_MAX || p_delta == 0)
@@ -192,38 +283,16 @@ void Local_Search::apply_move(size_t p_var_idx, double p_delta)
         model_var.upper_bound() - m_var_current_value[p_var_idx]);
   }
   m_var_current_value[p_var_idx] += p_delta;
-  for (size_t term_idx = 0; term_idx < model_var.term_num(); ++term_idx)
+  m_activity_dirty = true;
+  if (m_use_exact_double_activity)
+    update_affected_activities<double>(model_var, p_delta);
+  else
   {
-    size_t con_idx = model_var.con_idx(term_idx);
-    auto& model_con = m_model_manager->con(con_idx);
-    size_t pos_in_con = model_var.pos_in_con(term_idx);
-    double coeff = model_con.coeff(pos_in_con);
-    bool maintain_status = (con_idx != 0);
-    bool was_sat = false;
-    if (maintain_status)
-      was_sat = con_sat(con_idx);
-    long double updated_activity =
-        static_cast<long double>(m_con_activity[con_idx]) +
-        static_cast<long double>(coeff) *
-            static_cast<long double>(p_delta);
-    m_con_activity[con_idx] = static_cast<double>(updated_activity);
-    if (maintain_status)
-    {
-      bool now_sat = con_sat(con_idx);
-      if (was_sat && !now_sat)
-      {
-        delete_sat(con_idx);
-        insert_unsat(con_idx);
-      }
-      else if (!was_sat && now_sat)
-      {
-        insert_sat(con_idx);
-        delete_unsat(con_idx);
-      }
-    }
+    update_affected_activities<long double>(model_var, p_delta);
+    ++m_activity_hits;
+    if (m_activity_hits >= m_activity_period)
+      refresh_activities();
   }
-  if (++m_activity_hits >= m_activity_period)
-    refresh_activities();
   assert(m_tabu_variation > 0);
   std::uniform_int_distribution<size_t> dist(0, m_tabu_variation - 1);
   if (p_delta > 0)
@@ -238,7 +307,6 @@ void Local_Search::apply_move(size_t p_var_idx, double p_delta)
     m_var_allow_inc_step[p_var_idx] =
         m_cur_step + m_tabu_base + dist(m_rng);
   }
-  m_current_obj_breakthrough = m_con_activity[0] <= m_con_constant[0];
   if (m_con_unsat_idxs.size() < m_min_unsat_con)
     m_min_unsat_con = m_con_unsat_idxs.size();
   assert(m_model_manager->var_in_bound(model_var,
@@ -294,42 +362,22 @@ bool Local_Search::verify_solution() const
     return false;
   for (size_t con_idx = 1; con_idx < m_con_num; ++con_idx)
   {
-    auto& model_con = m_model_manager->con(con_idx);
-    long double activity = 0.0L;
-    for (size_t term_idx = 0; term_idx < model_con.term_num(); ++term_idx)
-      activity += static_cast<long double>(model_con.coeff(term_idx)) *
-                  static_cast<long double>(
-                      m_var_best_value[model_con.var_idx(term_idx)]);
-    double gap = static_cast<double>(activity) - m_con_constant[con_idx];
-    if (m_con_is_equality[con_idx])
-    {
-      if (std::fabs(gap) > m_model_manager->feas_tolerance())
-      {
-        printf("c %s activity[%.15g] = constant[%.15g]\n",
-               model_con.name().c_str(),
-               static_cast<double>(activity),
-               m_con_constant[con_idx]);
-        return false;
-      }
-    }
-    else
-    {
-      if (gap > m_model_manager->feas_tolerance())
-      {
-        printf("c %s activity[%.15g] < constant[%.15g]\n",
-               model_con.name().c_str(),
-               static_cast<double>(activity),
-               m_con_constant[con_idx]);
-        return false;
-      }
-    }
+    const auto& model_con = m_model_manager->con(con_idx);
+    const long double activity =
+        compute_activity<long double>(model_con, m_var_best_value.data());
+    if (con_sat(con_idx, activity))
+      continue;
+    printf(m_con_is_equality[con_idx]
+               ? "c %s activity[%.15g] = constant[%.15g]\n"
+               : "c %s activity[%.15g] < constant[%.15g]\n",
+           model_con.name().c_str(),
+           static_cast<double>(activity),
+           m_con_constant[con_idx]);
+    return false;
   }
-  auto& model_obj = m_model_manager->obj();
-  long double obj_value = 0.0L;
-  for (size_t term_idx = 0; term_idx < m_obj_var_num; ++term_idx)
-    obj_value += static_cast<long double>(model_obj.coeff(term_idx)) *
-                 static_cast<long double>(
-                     m_var_best_value[model_obj.var_idx(term_idx)]);
+  const auto& model_obj = m_model_manager->obj();
+  const long double obj_value =
+      compute_activity<long double>(model_obj, m_var_best_value.data());
   if (std::fabs(static_cast<double>(obj_value) - m_best_obj) >
       m_readonly_ctx.m_opt_tolerance)
   {
@@ -362,11 +410,107 @@ void Local_Search::write_sol() const
     const auto& model_var = m_model_manager->var(var_idx);
     if (m_var_best_value[var_idx])
       fprintf(sol_file,
-              "%-50s        %.15g\n",
+              "%-50s        %.*g\n",
               model_var.name().c_str(),
+              std::numeric_limits<double>::max_digits10,
               m_var_best_value[var_idx]);
   }
   fclose(sol_file);
+}
+
+bool Local_Search::can_use_exact_double_activity() const
+{
+  if (!std::numeric_limits<double>::is_iec559 ||
+      std::numeric_limits<double>::radix != 2 ||
+      std::numeric_limits<double>::digits != 53 ||
+      std::numeric_limits<double>::max_exponent != 1024 ||
+      std::numeric_limits<uint64_t>::digits < 54)
+    return false;
+
+  std::vector<bool> relevant_vars(m_var_num, false);
+  for (size_t con_idx = 0; con_idx < m_con_num; ++con_idx)
+  {
+    const auto& model_con = m_model_manager->con(con_idx);
+    for (size_t term_idx = 0; term_idx < model_con.term_num(); ++term_idx)
+    {
+      int64_t coeff_integer = 0;
+      if (!exact_binary64_integer(model_con.coeff(term_idx),
+                                  coeff_integer))
+        return false;
+      if (coeff_integer == 0)
+        continue;
+      const size_t var_idx = model_con.var_idx(term_idx);
+      if (var_idx >= m_var_num)
+        return false;
+      relevant_vars[var_idx] = true;
+    }
+  }
+
+  std::vector<uint64_t> max_abs_values(m_var_num, 0);
+  std::vector<uint64_t> domain_widths(m_var_num, 0);
+  for (size_t var_idx = 0; var_idx < m_var_num; ++var_idx)
+  {
+    if (!relevant_vars[var_idx])
+      continue;
+    const auto& model_var = m_model_manager->var(var_idx);
+    int64_t lower_integer = 0;
+    int64_t upper_integer = 0;
+    if (!exact_binary64_integer(model_var.lower_bound(), lower_integer) ||
+        !exact_binary64_integer(model_var.upper_bound(), upper_integer))
+      return false;
+    if (lower_integer > upper_integer)
+      return false;
+    if (lower_integer != upper_integer &&
+        !model_var.requires_integrality())
+      return false;
+    const uint64_t width =
+        static_cast<uint64_t>(upper_integer - lower_integer);
+    if (width > k_max_exact_binary64_integer)
+      return false;
+    domain_widths[var_idx] = width;
+    max_abs_values[var_idx] = std::max(integer_magnitude(lower_integer),
+                                       integer_magnitude(upper_integer));
+  }
+
+  for (size_t con_idx = 0; con_idx < m_con_num; ++con_idx)
+  {
+    const auto& model_con = m_model_manager->con(con_idx);
+    uint64_t row_bound = 0;
+    for (size_t term_idx = 0; term_idx < model_con.term_num(); ++term_idx)
+    {
+      int64_t coeff_integer = 0;
+      if (!exact_binary64_integer(model_con.coeff(term_idx),
+                                  coeff_integer))
+        return false;
+      const uint64_t abs_coeff = integer_magnitude(coeff_integer);
+      if (abs_coeff == 0)
+        continue;
+      const size_t var_idx = model_con.var_idx(term_idx);
+      uint64_t term_bound = 0;
+      if (!exact_bound_product(
+              abs_coeff, max_abs_values[var_idx], term_bound) ||
+          term_bound > k_max_exact_binary64_integer - row_bound)
+        return false;
+      row_bound += term_bound;
+      if (domain_widths[var_idx] >
+          k_max_exact_binary64_integer / abs_coeff)
+        return false;
+    }
+  }
+
+  return true;
+}
+
+void Local_Search::configure_activity_arithmetic()
+{
+  m_use_exact_double_activity = can_use_exact_double_activity();
+  if (m_use_exact_double_activity)
+  {
+    printf("c activity arithmetic: exact double (certified)\n");
+    printf("c periodic activity recomputation: disabled (T=infinity)\n");
+  }
+  else
+    printf("c activity arithmetic: long double\n");
 }
 
 void Local_Search::init_data()
@@ -382,6 +526,8 @@ void Local_Search::init_data()
   m_activity_period =
       std::max<size_t>(m_activity_period, static_cast<size_t>(1));
   m_activity_hits = 0;
+  m_activity_dirty = false;
+  configure_activity_arithmetic();
   m_var_current_value.resize(m_var_num, 0.0);
   m_var_best_value.resize(m_var_num, 0.0);
   m_var_allow_inc_step.resize(m_var_num, 0);
@@ -416,15 +562,13 @@ void Local_Search::init_data()
   }
 }
 
-bool Local_Search::solve_objective_only()
+template <typename Accumulator>
+bool Local_Search::solve_objective_only_impl()
 {
-  if (m_con_num > 1)
-    return false;
   auto is_neg_inf_bound = [this](double bound)
   { return bound <= k_neg_inf + m_model_manager->feas_tolerance(); };
   auto is_pos_inf_bound = [this](double bound)
   { return bound >= k_inf - m_model_manager->feas_tolerance(); };
-  double best_obj = 0.0;
   for (size_t var_idx = 0; var_idx < m_var_num; ++var_idx)
   {
     const auto& model_var = m_model_manager->var(var_idx);
@@ -494,14 +638,24 @@ bool Local_Search::solve_objective_only()
     }
     m_var_current_value[var_idx] = value;
     m_var_best_value[var_idx] = value;
-    best_obj += coeff * value;
   }
-  m_best_obj = best_obj;
+  const Accumulator best_obj = compute_activity<Accumulator>(
+      m_model_manager->obj(), m_var_current_value.data());
+  m_best_obj = static_cast<double>(best_obj);
   m_con_activity[0] = m_best_obj;
   m_is_found_feasible = true;
   m_min_unsat_con = 0;
   publish_best_obj();
   return true;
+}
+
+bool Local_Search::solve_objective_only()
+{
+  if (m_con_num > 1)
+    return false;
+  if (m_use_exact_double_activity)
+    return solve_objective_only_impl<double>();
+  return solve_objective_only_impl<long double>();
 }
 
 void Local_Search::normalize_domain_values(std::vector<double>& p_values,
@@ -578,7 +732,8 @@ Local_Search::Local_Search(const Model_Manager* p_model_manager,
       m_var_obj_cost(p_model_manager->var_obj_cost()),
       m_is_keep_feas(false), m_strct_feas(true), m_break_eq_feas(false),
       m_binary_op_stamp_token(0), m_activity_period(100000),
-      m_activity_hits(0), m_cur_step(0), m_tabu_base(4),
+      m_activity_hits(0), m_activity_dirty(false),
+      m_use_exact_double_activity(false), m_cur_step(0), m_tabu_base(4),
       m_tabu_variation(7), m_is_found_feasible(false),
       m_current_obj_breakthrough(false), m_last_improve_step(0),
       m_bms_unsat_con(10), m_bms_mtm_unsat_op(2250), m_bms_sat_con(1),
