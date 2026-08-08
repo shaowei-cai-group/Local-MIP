@@ -99,6 +99,10 @@ private:
 
   size_t m_activity_hits;
 
+  bool m_activity_dirty;
+
+  bool m_use_exact_double_activity;
+
   size_t m_cur_step;
 
   std::mt19937 m_rng;
@@ -183,9 +187,8 @@ private:
 
   std::vector<Neighbor> m_explore_neighbor_list;
 
-  inline bool con_sat(size_t p_con_idx) const;
-
-  inline bool con_unsat(size_t p_con_idx) const;
+  template <typename Activity>
+  inline bool con_sat(size_t p_con_idx, Activity p_activity) const;
 
   inline void insert_unsat(size_t p_con_idx);
 
@@ -214,9 +217,27 @@ private:
 
   bool solve_objective_only();
 
+  template <typename Accumulator>
+  bool solve_objective_only_impl();
+
   void init_state();
 
   void refresh_activities();
+
+  template <typename Accumulator>
+  void refresh_activities_impl();
+
+  template <typename Accumulator>
+  Accumulator compute_activity(const Model_Con& p_con,
+                               const double* p_var_values) const;
+
+  template <typename Accumulator>
+  void update_affected_activities(const Model_Var& p_model_var,
+                                  double p_delta);
+
+  bool can_use_exact_double_activity() const;
+
+  void configure_activity_arithmetic();
 
   double checked_move_value(size_t p_var_idx,
                             double p_delta,
@@ -342,22 +363,17 @@ public:
   void set_break_eq_feas(bool p_break_eq_feas);
 };
 
-inline bool Local_Search::con_sat(size_t p_con_idx) const
+template <typename Activity>
+inline bool Local_Search::con_sat(size_t p_con_idx,
+                                  Activity p_activity) const
 {
-  double gap = m_con_activity[p_con_idx] - m_con_constant[p_con_idx];
+  const Activity gap =
+      p_activity - static_cast<Activity>(m_con_constant[p_con_idx]);
+  const Activity tolerance =
+      static_cast<Activity>(m_model_manager->feas_tolerance());
   if (m_con_is_equality[p_con_idx])
-    return std::fabs(gap) <= m_model_manager->feas_tolerance();
-  else
-    return gap <= m_model_manager->feas_tolerance();
-}
-
-inline bool Local_Search::con_unsat(size_t p_con_idx) const
-{
-  double gap = m_con_activity[p_con_idx] - m_con_constant[p_con_idx];
-  if (m_con_is_equality[p_con_idx])
-    return std::fabs(gap) > m_model_manager->feas_tolerance();
-  else
-    return gap > m_model_manager->feas_tolerance();
+    return std::fabs(gap) <= tolerance;
+  return gap <= tolerance;
 }
 
 inline void Local_Search::insert_unsat(size_t p_con_idx)
