@@ -18,8 +18,8 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -56,15 +56,17 @@ void Weight::set_method(const std::string& p_method_name)
   else if (method == "monotone")
     m_default_method = Method::monotone;
   else
-  {
-    printf("c unsupported weight method %s, fallback to smooth.\n",
-           p_method_name.c_str());
-    m_default_method = Method::smooth;
-  }
+    throw std::invalid_argument("unsupported weight method: " +
+                                p_method_name);
 }
 
 void Weight::set_smooth_probability(size_t p_weight_smooth_prob)
 {
+  if (p_weight_smooth_prob > k_probability_scale)
+  {
+    throw std::invalid_argument(
+        "weight smooth probability must be in [0, 10000]");
+  }
   m_smooth_prob = p_weight_smooth_prob;
 }
 
@@ -88,7 +90,8 @@ void Weight::update(Weight_Ctx& p_ctx) const
 
 void Weight::smooth_update(Weight_Ctx& p_ctx) const
 {
-  if (p_ctx.m_rng() % 10000 > m_smooth_prob)
+  std::uniform_int_distribution<size_t> dist(0, k_probability_scale - 1);
+  if (dist(p_ctx.m_rng) >= m_smooth_prob)
   {
     for (size_t con_idx : p_ctx.m_shared.m_con_unsat_idxs)
       p_ctx.m_con_weight[con_idx]++;

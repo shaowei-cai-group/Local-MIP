@@ -22,7 +22,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -46,12 +46,8 @@ void Scoring::set_neighbor_method(const std::string& p_method_name)
   else if (method == "progress_age")
     m_neighbor_method = Neighbor_Method::progress_age;
   else
-  {
-    printf("c unsupported neighbor scoring method %s, fallback to "
-           "progress_bonus.\n",
-           p_method_name.c_str());
-    m_neighbor_method = Neighbor_Method::progress_bonus;
-  }
+    throw std::invalid_argument("unsupported neighbor scoring method: " +
+                                p_method_name);
 }
 
 Scoring::Neighbor_Ctx::Neighbor_Ctx(

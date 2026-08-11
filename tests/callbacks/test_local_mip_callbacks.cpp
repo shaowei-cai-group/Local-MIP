@@ -255,6 +255,34 @@ bool test_weight_cbk_invocation()
   return ok;
 }
 
+bool test_smooth_probability_boundaries()
+{
+  Model_Manager manager;
+  SharedData shared(manager);
+  shared.con_weight.assign(1, 2);
+  shared.con_activity.assign(1, 0.0);
+  shared.con_constant.assign(1, 0.0);
+  shared.con_is_equality.assign(1, false);
+  shared.is_found_feasible = true;
+  shared.current_obj_breakthrough = true;
+  std::mt19937 random_engine(3);
+  Weight::Weight_Ctx context(
+      shared.view, random_engine, shared.con_weight);
+  Weight weight;
+  weight.set_method("smooth");
+
+  weight.set_smooth_probability(0);
+  weight.update(context);
+  bool ok = check(shared.con_weight[0] == 3,
+                  "smooth probability 0 should always increase weights");
+
+  weight.set_smooth_probability(k_probability_scale);
+  weight.update(context);
+  ok &= check(shared.con_weight[0] == 2,
+              "smooth probability 10000 should always smooth weights");
+  return ok;
+}
+
 bool test_lift_scoring_cbk_invocation()
 {
   Local_MIP solver;
@@ -408,6 +436,7 @@ int main()
   ok &= test_start_solution_size_mismatch();
   ok &= test_restart_cbk_invocation();
   ok &= test_weight_cbk_invocation();
+  ok &= test_smooth_probability_boundaries();
   ok &= test_lift_scoring_cbk_invocation();
   ok &= test_neighbor_scoring_cbk_invocation();
   ok &= test_neighbor_validation_classification();

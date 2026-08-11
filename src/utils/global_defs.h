@@ -15,6 +15,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 
 #ifdef DEBUG
@@ -46,6 +47,10 @@ inline constexpr double k_max_feas_tolerance = 1e-2;
 inline constexpr double k_max_opt_tolerance = 1.0;
 
 inline constexpr double k_max_zero_tolerance = 1e-3;
+
+inline constexpr size_t k_probability_scale = 10000;
+
+inline constexpr size_t k_max_heuristic_count = 100000000;
 
 inline bool is_effectively_zero(double p_value, double p_tolerance)
 {

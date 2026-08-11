@@ -2,13 +2,13 @@
 # Model file path must be specified via command line: --model_file test-set/sct1.mps
 
 # Basic Parameters
-time_limit = 10                # double, [0, 1e8], time limit in seconds
+time_limit = 10                # double, (0, 1e8], time limit in seconds
 random_seed = 0                # int, [0, 2147483647], random seed for local search (0 to use default)
 feas_tolerance = 0.000001      # double, [0, 0.01], feasibility tolerance
 opt_tolerance = 0.0001         # double, [0, 1], optimality tolerance
 zero_tolerance = 0.000000001   # double, [0, 0.001], zero value tolerance
 bound_strengthen = 1           # int, [0, 2], bound strengthen level (0-off, 1-ip, 2-mip)
-log_obj = 1                    # int, [0, 1], log objective or not
+log_obj = 1                    # int, [0, 1], log incumbent trace or not (max 3000 points)
 split_eq = 1                   # int, [0, 1], split equalities into two inequalities
 activity_period = 100000       # int, [1, 100000000], constraint activity recompute period
 

@@ -21,8 +21,8 @@
 #include <cctype>
 #include <cmath>
 #include <cstddef>
-#include <cstdio>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -63,11 +63,8 @@ void Start::set_method(const std::string& p_method_name)
   else if (method == "locks")
     m_default_method = Method::lock_guided;
   else
-  {
-    printf("c unsupported start method %s, fallback to zero.\n",
-           p_method_name.c_str());
-    m_default_method = Method::zero;
-  }
+    throw std::invalid_argument("unsupported start method: " +
+                                p_method_name);
 }
 
 void Start::set_up_start_values(

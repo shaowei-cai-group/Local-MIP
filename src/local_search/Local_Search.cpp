@@ -87,7 +87,7 @@ int Local_Search::run_search(const std::vector<double>& p_start_solution,
     {
       if (m_activity_dirty)
       {
-        refresh_activities();
+        refresh_dirty_activities();
         if (!m_con_unsat_idxs.empty())
         {
           m_is_keep_feas = false;
@@ -150,6 +150,23 @@ void Local_Search::output_result() const
   }
 }
 
+void Local_Search::configure_incumbent_trace(bool p_enabled,
+                                             double p_time_limit)
+{
+  m_incumbent_trace.configure(p_enabled, p_time_limit);
+}
+
+void Local_Search::start_incumbent_trace(
+    std::chrono::steady_clock::time_point p_start_time)
+{
+  m_incumbent_trace.start(p_start_time);
+}
+
+void Local_Search::finish_incumbent_trace()
+{
+  m_incumbent_trace.finish_live_output();
+}
+
 template <typename Accumulator>
 Accumulator
 Local_Search::compute_activity(const Model_Con& p_con,
@@ -195,6 +212,9 @@ void Local_Search::refresh_activities_impl()
     else
       insert_unsat(con_idx);
   }
+  std::fill(
+      m_con_activity_is_dirty.begin(), m_con_activity_is_dirty.end(), 0);
+  m_dirty_con_idxs.clear();
   m_activity_hits = 0;
   m_activity_dirty = false;
 }
@@ -205,6 +225,51 @@ void Local_Search::refresh_activities()
     refresh_activities_impl<double>();
   else
     refresh_activities_impl<long double>();
+}
+
+void Local_Search::refresh_dirty_activities()
+{
+  if (m_dirty_con_idxs.empty())
+  {
+    m_activity_hits = 0;
+    m_activity_dirty = false;
+    return;
+  }
+
+  const double* var_values = m_var_current_value.data();
+  for (const size_t con_idx : m_dirty_con_idxs)
+  {
+    const auto& model_con = m_model_manager->con(con_idx);
+    const long double activity =
+        compute_activity<long double>(model_con, var_values);
+    if (con_idx == 0)
+    {
+      m_current_obj_breakthrough =
+          activity <= static_cast<long double>(m_con_constant[0]);
+      m_con_activity[0] = static_cast<double>(activity);
+      m_con_activity_is_dirty[0] = 0;
+      continue;
+    }
+
+    const bool was_sat = m_con_pos_in_sat_idxs[con_idx] != SIZE_MAX;
+    assert(was_sat != (m_con_pos_in_unsat_idxs[con_idx] != SIZE_MAX));
+    const bool now_sat = con_sat(con_idx, activity);
+    m_con_activity[con_idx] = static_cast<double>(activity);
+    if (was_sat && !now_sat)
+    {
+      delete_sat(con_idx);
+      insert_unsat(con_idx);
+    }
+    else if (!was_sat && now_sat)
+    {
+      delete_unsat(con_idx);
+      insert_sat(con_idx);
+    }
+    m_con_activity_is_dirty[con_idx] = 0;
+  }
+  m_dirty_con_idxs.clear();
+  m_activity_hits = 0;
+  m_activity_dirty = false;
 }
 
 void Local_Search::init_state()
@@ -223,7 +288,7 @@ void Local_Search::reset_after_restart()
   refresh_activities();
 }
 
-template <typename Accumulator>
+template <typename Accumulator, bool Track_Dirty>
 void Local_Search::update_affected_activities(const Model_Var& p_model_var,
                                               double p_delta)
 {
@@ -231,6 +296,8 @@ void Local_Search::update_affected_activities(const Model_Var& p_model_var,
   {
     const size_t con_idx = p_model_var.con_idx(term_idx);
     const auto& model_con = m_model_manager->con(con_idx);
+    if constexpr (Track_Dirty)
+      mark_activity_dirty(con_idx);
     const size_t pos_in_con = p_model_var.pos_in_con(term_idx);
     const double coeff = model_con.coeff(pos_in_con);
     const bool maintain_status = (con_idx != 0);
@@ -283,29 +350,28 @@ void Local_Search::apply_move(size_t p_var_idx, double p_delta)
         model_var.upper_bound() - m_var_current_value[p_var_idx]);
   }
   m_var_current_value[p_var_idx] += p_delta;
-  m_activity_dirty = true;
   if (m_use_exact_double_activity)
-    update_affected_activities<double>(model_var, p_delta);
+    update_affected_activities<double, false>(model_var, p_delta);
   else
   {
-    update_affected_activities<long double>(model_var, p_delta);
+    update_affected_activities<long double, true>(model_var, p_delta);
     ++m_activity_hits;
     if (m_activity_hits >= m_activity_period)
-      refresh_activities();
+      refresh_dirty_activities();
   }
   assert(m_tabu_variation > 0);
-  std::uniform_int_distribution<size_t> dist(0, m_tabu_variation - 1);
+  const size_t tabu_offset = m_rng() % m_tabu_variation;
   if (p_delta > 0)
   {
     m_var_last_inc_step[p_var_idx] = m_cur_step;
     m_var_allow_dec_step[p_var_idx] =
-        m_cur_step + m_tabu_base + dist(m_rng);
+        m_cur_step + m_tabu_base + tabu_offset;
   }
   else
   {
     m_var_last_dec_step[p_var_idx] = m_cur_step;
     m_var_allow_inc_step[p_var_idx] =
-        m_cur_step + m_tabu_base + dist(m_rng);
+        m_cur_step + m_tabu_base + tabu_offset;
   }
   if (m_con_unsat_idxs.size() < m_min_unsat_con)
     m_min_unsat_con = m_con_unsat_idxs.size();
@@ -517,12 +583,12 @@ void Local_Search::init_data()
 {
   assert(m_model_manager->con_num() > 0);
   assert(m_model_manager->var_num() > 0);
-  m_min_unsat_con = m_model_manager->con_num();
   m_var_num = m_model_manager->var_num();
   m_obj_var_num = m_model_manager->obj().term_num();
   m_con_num = m_model_manager->con_num();
   m_has_objective = (m_obj_var_num > 0);
   m_is_unbounded = false;
+  m_min_unsat_con = m_con_num;
   m_activity_period =
       std::max<size_t>(m_activity_period, static_cast<size_t>(1));
   m_activity_hits = 0;
@@ -549,6 +615,9 @@ void Local_Search::init_data()
   m_con_sat_idxs.reserve(m_con_num);
   m_con_constant.resize(m_con_num, 0.0);
   m_con_activity.resize(m_con_num, 0.0);
+  m_con_activity_is_dirty.assign(m_con_num, 0);
+  m_dirty_con_idxs.clear();
+  m_dirty_con_idxs.reserve(m_con_num);
   for (size_t con_idx = 1; con_idx < m_con_num; con_idx++)
     m_con_constant[con_idx] = m_model_manager->con(con_idx).rhs();
   if (m_explore_neighbor_list.empty())

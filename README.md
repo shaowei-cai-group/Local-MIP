@@ -108,7 +108,7 @@ CTest targets are defined in `tests/CMakeLists.txt`.
 cd build
 
 # Run unit test subset
-ctest --output-on-failure -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config|shared_model)$"
+ctest --output-on-failure -R "^(api|callbacks|start_strategies|constraint_recognition|scoring|model_manager|reader|move_operations|neighbor_config|shared_model|activity_arithmetic|incumbent_trace)$"
 
 # Run integration tests
 ctest --output-on-failure -R "^integration$"

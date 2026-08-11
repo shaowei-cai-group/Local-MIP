@@ -19,8 +19,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -119,10 +119,6 @@ void Scoring::set_lift_method(const std::string& p_method_name)
   else if (method == "lift_random")
     m_lift_method = Lift_Method::lift_random;
   else
-  {
-    printf("c unsupported lift scoring method %s, fallback to "
-           "lift_age.\n",
-           p_method_name.c_str());
-    m_lift_method = Lift_Method::lift_age;
-  }
+    throw std::invalid_argument("unsupported lift scoring method: " +
+                                p_method_name);
 }

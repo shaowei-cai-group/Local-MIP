@@ -141,20 +141,10 @@ bool test_basic_setters()
   ok &= check(solver.m_local_search->m_start.m_default_method ==
                   Start::Method::lock_guided,
               "set_start_method should recognise lock guidance");
-  solver.set_start_method("unsupported-method");
-  ok &= check(solver.m_local_search->m_start.m_default_method ==
-                  Start::Method::zero,
-              "set_start_method should fallback to zero");
-
   solver.set_restart_method("hybrid");
   ok &= check(solver.m_local_search->m_restart.m_default_strategy ==
                   Restart::Strategy::hybrid,
               "set_restart_method should recognise hybrid");
-  solver.set_restart_method("unknown");
-  ok &= check(solver.m_local_search->m_restart.m_default_strategy ==
-                  Restart::Strategy::random,
-              "set_restart_method should fallback to random");
-
   solver.set_restart_step(32);
   ok &= check(solver.m_local_search->m_restart.m_restart_step == 32,
               "set_restart_step should propagate to restart");
@@ -163,30 +153,19 @@ bool test_basic_setters()
   ok &= check(solver.m_local_search->m_weight.m_default_method ==
                   Weight::Method::monotone,
               "set_weight_method should recognise monotone");
-  solver.set_weight_method("DEFAULT");
+  solver.set_weight_method("smooth");
   ok &= check(solver.m_local_search->m_weight.m_default_method ==
                   Weight::Method::smooth,
-              "set_weight_method should fallback to smooth");
+              "set_weight_method should recognise smooth");
 
   solver.set_lift_scoring_method("lift_random");
   ok &= check(solver.m_local_search->m_scoring.m_lift_method ==
                   Scoring::Lift_Method::lift_random,
               "set_lift_scoring_method should recognise lift_random");
-  solver.set_lift_scoring_method("unsupported");
-  ok &= check(solver.m_local_search->m_scoring.m_lift_method ==
-                  Scoring::Lift_Method::lift_age,
-              "set_lift_scoring_method should fallback to default");
-
   solver.set_neighbor_scoring_method("progress_age");
   ok &= check(solver.m_local_search->m_scoring.m_neighbor_method ==
                   Scoring::Neighbor_Method::progress_age,
               "set_neighbor_scoring_method should recognise progress_age");
-  solver.set_neighbor_scoring_method("UNKNOWN");
-  ok &= check(
-      solver.m_local_search->m_scoring.m_neighbor_method ==
-          Scoring::Neighbor_Method::progress_bonus,
-      "set_neighbor_scoring_method should fallback to progress_bonus");
-
   solver.set_weight_smooth_probability(17);
   ok &= check(solver.m_local_search->m_weight.smooth_probability() == 17,
               "set_weight_smooth_probability should persist value");
@@ -351,9 +330,8 @@ bool test_concurrent_user_termination()
   ok &= check(solver.m_local_search->m_terminated.load(
                   std::memory_order_relaxed),
               "User termination should publish the search stop flag");
-  ok &= check(!solver.m_timeout_thread.joinable() &&
-                  !solver.m_obj_log_thread.joinable(),
-              "Run thread should own and join background threads");
+  ok &= check(!solver.m_timeout_thread.joinable(),
+              "Run thread should own and join the timeout thread");
   return ok;
 }
 
@@ -534,6 +512,78 @@ bool test_invalid_numeric_setters()
               "Zero tolerance above its range should be rejected");
   ok &= check(rejects([&]() { solver.set_tabu_variation(0); }),
               "Zero tabu variation should be rejected");
+  ok &= check(rejects([&]() { solver.set_bound_strengthen(-1); }) &&
+                  rejects([&]() { solver.set_bound_strengthen(3); }),
+              "Bound strengthen levels outside [0, 2] should be rejected");
+  solver.set_weight_smooth_probability(0);
+  solver.set_weight_smooth_probability(1);
+  solver.set_weight_smooth_probability(k_probability_scale);
+  ok &= check(rejects(
+                  [&]()
+                  {
+                    solver.set_weight_smooth_probability(
+                        k_probability_scale + 1);
+                  }),
+              "Smooth probabilities above 10000 should be rejected");
+  ok &= check(rejects([&]() { solver.set_activity_period(0); }) &&
+                  rejects(
+                      [&]()
+                      {
+                        solver.set_activity_period(
+                            k_max_heuristic_count + 1);
+                      }),
+              "Activity period should use the documented API range");
+  ok &= check(rejects(
+                  [&]()
+                  {
+                    solver.set_restart_step(k_max_heuristic_count + 1);
+                  }) &&
+                  rejects(
+                      [&]()
+                      {
+                        solver.set_bms_unsat_con(
+                            k_max_heuristic_count + 1);
+                      }) &&
+                  rejects(
+                      [&]()
+                      {
+                        solver.set_tabu_base(k_max_heuristic_count + 1);
+                      }),
+              "Heuristic counts should share the documented maximum");
+
+  solver.set_start_method("locks");
+  solver.set_restart_method("hybrid");
+  solver.set_weight_method("monotone");
+  solver.set_lift_scoring_method("lift_random");
+  solver.set_neighbor_scoring_method("progress_age");
+  ok &= check(rejects(
+                  [&]() { solver.set_start_method("unsupported-method"); }) &&
+                  rejects([&]() { solver.set_restart_method("unknown"); }) &&
+                  rejects([&]() { solver.set_weight_method("default"); }) &&
+                  rejects(
+                      [&]()
+                      {
+                        solver.set_lift_scoring_method("unsupported");
+                      }) &&
+                  rejects(
+                      [&]()
+                      {
+                        solver.set_neighbor_scoring_method("unknown");
+                      }) &&
+                  rejects(
+                      [&]() { solver.add_neighbor("unknown", 1, 1); }),
+              "Unsupported strategy names should be rejected");
+  ok &= check(solver.m_local_search->m_start.m_default_method ==
+                      Start::Method::lock_guided &&
+                  solver.m_local_search->m_restart.m_default_strategy ==
+                      Restart::Strategy::hybrid &&
+                  solver.m_local_search->m_weight.m_default_method ==
+                      Weight::Method::monotone &&
+                  solver.m_local_search->m_scoring.m_lift_method ==
+                      Scoring::Lift_Method::lift_random &&
+                  solver.m_local_search->m_scoring.m_neighbor_method ==
+                      Scoring::Neighbor_Method::progress_age,
+              "Rejected strategy names must not change the prior setting");
 
   const double long_long_upper_exclusive =
       -static_cast<double>(std::numeric_limits<long long>::lowest());

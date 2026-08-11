@@ -42,10 +42,10 @@ bool check(bool p_condition, const char* p_message)
 }
 
 std::shared_ptr<const Prepared_Model>
-prepare_model(const Model_Builder& p_builder)
+prepare_model(const Model_Builder& p_builder, int p_bound_strengthen = 0)
 {
   Model_Prepare_Options options;
-  options.bound_strengthen = 0;
+  options.bound_strengthen = p_bound_strengthen;
   options.split_eq = false;
   return p_builder.prepare(options);
 }
@@ -100,8 +100,9 @@ bool test_safe_binary_model_and_period_semantics()
     ok &= check(search->m_con_activity[1] == 5.0 * value,
                 "constraint activity should remain exact");
   }
-  ok &= check(search->m_activity_dirty,
-              "T=infinity must retain the activity dirty state");
+  ok &= check(!search->m_activity_dirty &&
+                  search->m_dirty_con_idxs.empty(),
+              "certified updates must not create dirty rows");
   ok &= check(search->m_activity_hits == 0,
               "T=infinity must not grow the period counter");
   const double activity_before_refresh = search->m_con_activity[1];
@@ -120,8 +121,9 @@ bool test_safe_binary_model_and_period_semantics()
   configured_search->apply_move(static_cast<size_t>(x), 1.0);
   configured_search->apply_move(static_cast<size_t>(x), 1.0);
   ok &= check(configured_search->m_activity_hits == 0 &&
-                  configured_search->m_activity_dirty,
-              "certified model must keep T=infinity after configuration");
+                  !configured_search->m_activity_dirty &&
+                  configured_search->m_dirty_con_idxs.empty(),
+              "configured period must not affect certified updates");
   return ok;
 }
 
@@ -359,8 +361,10 @@ bool test_long_exact_move_sequence()
 
   ok &= check(x_reference == 0 && y_reference == 0,
               "long move sequence should return to its start");
-  ok &= check(search->m_activity_hits == 0 && search->m_activity_dirty,
-              "long exact move sequence must retain T=infinity semantics");
+  ok &= check(search->m_activity_hits == 0 &&
+                  !search->m_activity_dirty &&
+                  search->m_dirty_con_idxs.empty(),
+              "long exact move sequence must not create dirty rows");
   return ok;
 }
 
@@ -509,6 +513,91 @@ bool test_objective_only_dispatch()
   return ok;
 }
 
+bool test_dirty_row_refresh()
+{
+  Model_Builder builder;
+  const int x =
+      builder.add_var("x", 0.0, 1.0, 1.0, Var_Type::real);
+  const int y =
+      builder.add_var("y", 0.0, 1.0, 2.0, Var_Type::real);
+  builder.add_con(k_neg_inf,
+                  0.2,
+                  std::vector<int>{x},
+                  std::vector<double>{1.0});
+  builder.add_con(k_neg_inf,
+                  0.2,
+                  std::vector<int>{y},
+                  std::vector<double>{1.0});
+
+  Local_MIP solver(prepare_model(builder));
+  solver.set_activity_period(100);
+  Local_Search* search = initialize_search(solver);
+  search->init_state();
+  search->apply_move(static_cast<size_t>(x), 0.5);
+  search->apply_move(static_cast<size_t>(x), 0.1);
+
+  bool ok = true;
+  ok &= check(!search->m_use_exact_double_activity,
+              "real model should use fallback arithmetic");
+  ok &= check(search->m_dirty_con_idxs.size() == 2 &&
+                  search->m_con_activity_is_dirty[0] == 1 &&
+                  search->m_con_activity_is_dirty[1] == 1 &&
+                  search->m_con_activity_is_dirty[2] == 0,
+              "only the objective and affected row should be dirty");
+  const double untouched_activity = search->m_con_activity[2];
+  search->refresh_dirty_activities();
+  ok &= check(search->m_dirty_con_idxs.empty() &&
+                  !search->m_activity_dirty &&
+                  search->m_activity_hits == 0,
+              "dirty refresh should clear its bookkeeping");
+  ok &= check(search->m_con_activity[0] == 0.6 &&
+                  search->m_con_activity[1] == 0.6 &&
+                  search->m_con_activity[2] == untouched_activity,
+              "dirty refresh should match the full activity oracle");
+  ok &= check(search->m_con_pos_in_unsat_idxs[1] != SIZE_MAX &&
+                  search->m_con_pos_in_sat_idxs[2] != SIZE_MAX,
+              "dirty refresh should preserve row status indexes");
+
+  search->apply_move(static_cast<size_t>(y), 0.25);
+  search->reset_after_restart();
+  ok &= check(search->m_con_activity[0] == 1.1 &&
+                  search->m_con_activity[1] == 0.6 &&
+                  search->m_con_activity[2] == 0.25 &&
+                  search->m_dirty_con_idxs.empty(),
+              "restart should still perform a complete refresh");
+  return ok;
+}
+
+bool test_inferred_rows_remain_synchronized()
+{
+  Model_Builder builder;
+  const int x = builder.add_var(
+      "x", 0.0, 10.0, -1.0, Var_Type::general_integer);
+  builder.add_con(k_neg_inf,
+                  4.0,
+                  std::vector<int>{x},
+                  std::vector<double>{1.0});
+  const auto prepared = prepare_model(builder, 1);
+  Local_MIP solver(prepared);
+  Local_Search* search = initialize_search(solver);
+  search->init_state();
+
+  bool ok = true;
+  ok &= check(prepared->model_manager().con(1).is_inferred_sat(),
+              "singleton bound strengthening should infer the row");
+  ok &= check(search->m_con_sat_idxs.size() == 1 &&
+                  search->m_con_unsat_idxs.empty() &&
+                  search->m_con_pos_in_sat_idxs[1] != SIZE_MAX,
+              "inferred rows should preserve synchronized search state");
+  search->apply_move(static_cast<size_t>(x), 4.0);
+  ok &= check(search->m_con_activity[1] == 4.0,
+              "moves should maintain inferred-row activities");
+  search->update_best_solution();
+  ok &= check(search->verify_solution(),
+              "final verification should accept the inferred row");
+  return ok;
+}
+
 } // namespace
 
 int main()
@@ -519,6 +608,8 @@ int main()
   ok &= test_long_exact_move_sequence();
   ok &= test_extended_precision_certification();
   ok &= test_objective_only_dispatch();
+  ok &= test_dirty_row_refresh();
+  ok &= test_inferred_rows_remain_synchronized();
   if (!ok)
     return 1;
   std::printf("All activity arithmetic tests passed.\n");

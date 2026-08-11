@@ -21,8 +21,8 @@
 #include <cctype>
 #include <cmath>
 #include <cstddef>
-#include <cstdio>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -63,11 +63,8 @@ void Restart::set_method(const std::string& p_restart_name)
   else if (method == "hybrid")
     m_default_strategy = Strategy::hybrid;
   else
-  {
-    printf("c unsupported restart method %s, fallback to random.\n",
-           p_restart_name.c_str());
-    m_default_strategy = Strategy::random;
-  }
+    throw std::invalid_argument("unsupported restart method: " +
+                                p_restart_name);
 }
 
 void Restart::set_restart_step(size_t p_restart_step)

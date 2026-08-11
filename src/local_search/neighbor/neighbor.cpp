@@ -20,8 +20,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -84,11 +84,8 @@ Neighbor::Neighbor(const std::string& p_neighbor_name,
   else if (method == "unsat_mtm_bm_random")
     m_strategy = Strategy::unsat_mtm_bm_random;
   else
-  {
-    printf("c unsupported neighbor method %s, fallback to unsat_mtm_bm.\n",
-           p_neighbor_name.c_str());
-    m_strategy = Strategy::unsat_mtm_bm;
-  }
+    throw std::invalid_argument("unsupported neighbor method: " +
+                                p_neighbor_name);
 }
 
 Neighbor::Neighbor(const std::string& p_neighbor_name,

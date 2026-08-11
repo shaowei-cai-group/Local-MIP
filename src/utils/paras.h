@@ -76,7 +76,7 @@
        false,                                                             \
        1000000,                                                           \
        0,                                                                 \
-       100000000,                                                         \
+       k_max_heuristic_count,                                             \
        "No-improvement steps before restart (0 disables)")                \
   PARA(smooth_prob,                                                       \
        int,                                                               \
@@ -84,7 +84,7 @@
        false,                                                             \
        1,                                                                 \
        0,                                                                 \
-       10000,                                                             \
+       k_probability_scale,                                               \
        "Weight smooth probability in 1/10000")                            \
   PARA(bms_unsat_con,                                                     \
        int,                                                               \
@@ -92,7 +92,7 @@
        false,                                                             \
        10,                                                                \
        0,                                                                 \
-       100000000,                                                         \
+       k_max_heuristic_count,                                             \
        "BMS unsatisfied constraint sample size")                          \
   PARA(bms_unsat_ops,                                                     \
        int,                                                               \
@@ -100,7 +100,7 @@
        false,                                                             \
        2250,                                                              \
        0,                                                                 \
-       100000000,                                                         \
+       k_max_heuristic_count,                                             \
        "BMS MTM unsatisfied operations")                                  \
   PARA(bms_sat_con,                                                       \
        int,                                                               \
@@ -108,7 +108,7 @@
        false,                                                             \
        1,                                                                 \
        0,                                                                 \
-       100000000,                                                         \
+       k_max_heuristic_count,                                             \
        "BMS satisfied constraint sample size")                            \
   PARA(bms_sat_ops,                                                       \
        int,                                                               \
@@ -116,7 +116,7 @@
        false,                                                             \
        80,                                                                \
        0,                                                                 \
-       100000000,                                                         \
+       k_max_heuristic_count,                                             \
        "BMS MTM satisfied operations")                                    \
   PARA(bms_flip_ops,                                                      \
        int,                                                               \
@@ -124,7 +124,7 @@
        false,                                                             \
        0,                                                                 \
        0,                                                                 \
-       100000000,                                                         \
+       k_max_heuristic_count,                                             \
        "BMS flip operations")                                             \
   PARA(bms_easy_ops,                                                      \
        int,                                                               \
@@ -132,7 +132,7 @@
        false,                                                             \
        5,                                                                 \
        0,                                                                 \
-       100000000,                                                         \
+       k_max_heuristic_count,                                             \
        "BMS easy operations")                                             \
   PARA(bms_random_ops,                                                    \
        int,                                                               \
@@ -140,16 +140,23 @@
        false,                                                             \
        250,                                                               \
        0,                                                                 \
-       100000000,                                                         \
+       k_max_heuristic_count,                                             \
        "BMS random operations")                                           \
-  PARA(tabu_base, int, 'a', false, 4, 0, 100000000, "Tabu base tenure")   \
+  PARA(tabu_base,                                                         \
+       int,                                                               \
+       'a',                                                               \
+       false,                                                             \
+       4,                                                                 \
+       0,                                                                 \
+       k_max_heuristic_count,                                             \
+       "Tabu base tenure")                                               \
   PARA(tabu_var,                                                          \
        int,                                                               \
        'e',                                                               \
        false,                                                             \
        7,                                                                 \
        1,                                                                 \
-       100000000,                                                         \
+       k_max_heuristic_count,                                             \
        "Tabu tenure variation (min 1)")                                   \
   PARA(activity_period,                                                   \
         int,                                                               \
@@ -157,7 +164,7 @@
         false,                                                             \
         100000,                                                            \
         1,                                                                 \
-        100000000,                                                         \
+        k_max_heuristic_count,                                             \
         "Constraint activity recompute period")                            \
   PARA(break_eq_feas,                                                     \
        int,                                                               \

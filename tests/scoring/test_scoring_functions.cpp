@@ -21,6 +21,7 @@
 #include <functional>
 #include <limits>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -300,9 +301,18 @@ protected:
     check(scoring.m_lift_method == Scoring::Lift_Method::lift_random,
           "Should set lift_random");
 
-    scoring.set_lift_method("invalid_method");
-    check(scoring.m_lift_method == Scoring::Lift_Method::lift_age,
-          "Should fallback to default lift_age");
+    bool invalid_lift_rejected = false;
+    try
+    {
+      scoring.set_lift_method("invalid_method");
+    }
+    catch (const std::invalid_argument&)
+    {
+      invalid_lift_rejected = true;
+    }
+    check(invalid_lift_rejected &&
+              scoring.m_lift_method == Scoring::Lift_Method::lift_random,
+          "Invalid lift method should be rejected without state change");
 
     // Test infeasible scoring method switching
     scoring.set_neighbor_method("progress_bonus");
@@ -315,10 +325,18 @@ protected:
               Scoring::Neighbor_Method::progress_age,
           "Should set progress_age");
 
-    scoring.set_neighbor_method("unknown");
-    check(scoring.m_neighbor_method ==
-              Scoring::Neighbor_Method::progress_bonus,
-          "Should fallback to default progress_bonus");
+    bool invalid_neighbor_rejected = false;
+    try
+    {
+      scoring.set_neighbor_method("unknown");
+    }
+    catch (const std::invalid_argument&)
+    {
+      invalid_neighbor_rejected = true;
+    }
+    check(invalid_neighbor_rejected &&
+              scoring.m_neighbor_method == Scoring::Neighbor_Method::progress_age,
+          "Invalid neighbor method should be rejected without state change");
   }
 };
 

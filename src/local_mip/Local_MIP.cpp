@@ -27,7 +27,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <limits>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -36,15 +35,31 @@
 #include <utility>
 #include <vector>
 
+namespace
+{
+
+void validate_heuristic_count(size_t p_value,
+                              const char* p_name,
+                              size_t p_min = 0)
+{
+  if (p_value < p_min || p_value > k_max_heuristic_count)
+  {
+    throw std::invalid_argument(
+        std::string(p_name) + " must be in [" + std::to_string(p_min) +
+        ", " + std::to_string(k_max_heuristic_count) + "]");
+  }
+}
+
+} // namespace
+
 Local_MIP::Local_MIP(
     std::unique_ptr<Model_Manager> p_owned_model_manager,
     std::shared_ptr<const Prepared_Model> p_prepared_model)
     : m_model_file(""), m_param_set_file(""), m_start_sol_path(""),
       m_time_limit(10.0), m_run_start(), m_lifecycle_mutex(),
       m_run_started(false), m_timeout_thread(), m_timeout_mutex(),
-      m_timeout_cv(), m_cancel_timeout(true), m_obj_log_thread(),
-      m_stop_obj_log(true), m_user_termination_requested(false),
-      m_log_obj_enabled(true),
+      m_timeout_cv(), m_cancel_timeout(true),
+      m_user_termination_requested(false), m_log_obj_enabled(true),
       m_owned_model_manager(std::move(p_owned_model_manager)),
       m_prepared_model(std::move(p_prepared_model)),
       m_local_search(nullptr)
@@ -71,7 +86,6 @@ Local_MIP::Local_MIP(
 
 Local_MIP::~Local_MIP()
 {
-  stop_obj_logger();
   request_timeout_stop();
   if (m_timeout_thread.joinable())
     m_timeout_thread.join();
@@ -213,6 +227,9 @@ void Local_MIP::set_time_limit(double p_time_limit)
 void Local_MIP::set_bound_strengthen(int p_level)
 {
   auto config_lock = lock_configuration();
+  if (p_level < 0 || p_level > 2)
+    throw std::invalid_argument(
+        "bound strengthen level must be 0, 1, or 2");
   mutable_model_manager().set_bound_strengthen(p_level);
   printf("c bound strengthen level is set to : %d\n", p_level);
 }
@@ -298,8 +315,8 @@ void Local_MIP::set_zero_tolerance(double p_value)
 void Local_MIP::set_start_method(const std::string& p_method_name)
 {
   auto config_lock = lock_configuration();
-  printf("c init method is set to : %s\n", p_method_name.c_str());
   m_local_search->set_start_method(p_method_name);
+  printf("c init method is set to : %s\n", p_method_name.c_str());
 }
 
 void Local_MIP::set_start_cbk(Local_Search::Start_Cbk p_start_cbk,
@@ -313,15 +330,16 @@ void Local_MIP::set_start_cbk(Local_Search::Start_Cbk p_start_cbk,
 void Local_MIP::set_restart_method(const std::string& p_restart_name)
 {
   auto config_lock = lock_configuration();
-  printf("c restart method is set to : %s\n", p_restart_name.c_str());
   m_local_search->set_restart_method(p_restart_name);
+  printf("c restart method is set to : %s\n", p_restart_name.c_str());
 }
 
 void Local_MIP::set_restart_step(size_t p_restart_step)
 {
   auto config_lock = lock_configuration();
-  printf("c restart step is set to : %zu\n", p_restart_step);
+  validate_heuristic_count(p_restart_step, "restart step");
   m_local_search->set_restart_step(p_restart_step);
+  printf("c restart step is set to : %zu\n", p_restart_step);
 }
 
 void Local_MIP::set_restart_cbk(Local_Search::Restart_Cbk p_restart_cbk,
@@ -335,8 +353,8 @@ void Local_MIP::set_restart_cbk(Local_Search::Restart_Cbk p_restart_cbk,
 void Local_MIP::set_weight_method(const std::string& p_weight_name)
 {
   auto config_lock = lock_configuration();
-  printf("c weight method is set to : %s\n", p_weight_name.c_str());
   m_local_search->set_weight_method(p_weight_name);
+  printf("c weight method is set to : %s\n", p_weight_name.c_str());
 }
 
 void Local_MIP::set_weight_cbk(Local_Search::Weight_Cbk p_weight_cbk,
@@ -350,25 +368,25 @@ void Local_MIP::set_weight_cbk(Local_Search::Weight_Cbk p_weight_cbk,
 void Local_MIP::set_weight_smooth_probability(size_t p_weight_smooth_prob)
 {
   auto config_lock = lock_configuration();
+  m_local_search->set_weight_smooth_probability(p_weight_smooth_prob);
   printf("c weight smooth probability is set to : %zu\n",
          p_weight_smooth_prob);
-  m_local_search->set_weight_smooth_probability(p_weight_smooth_prob);
 }
 
 void Local_MIP::set_lift_scoring_method(const std::string& p_method_name)
 {
   auto config_lock = lock_configuration();
-  printf("c lift scoring method is set to : %s\n", p_method_name.c_str());
   m_local_search->set_lift_scoring_method(p_method_name);
+  printf("c lift scoring method is set to : %s\n", p_method_name.c_str());
 }
 
 void Local_MIP::set_neighbor_scoring_method(
     const std::string& p_method_name)
 {
   auto config_lock = lock_configuration();
+  m_local_search->set_neighbor_scoring_method(p_method_name);
   printf("c neighbor scoring method is set to : %s\n",
          p_method_name.c_str());
-  m_local_search->set_neighbor_scoring_method(p_method_name);
 }
 
 void Local_MIP::set_lift_scoring_cbk(Local_Search::Lift_Scoring_Cbk p_cbk,
@@ -391,6 +409,7 @@ void Local_MIP::set_neighbor_scoring_cbk(
 void Local_MIP::set_bms_unsat_con(size_t p_value)
 {
   auto config_lock = lock_configuration();
+  validate_heuristic_count(p_value, "unsatisfied constraint sample size");
   m_local_search->set_bms_unsat_con(p_value);
   printf("c unsatisfied constraint sample size : %zu\n", p_value);
 }
@@ -398,6 +417,7 @@ void Local_MIP::set_bms_unsat_con(size_t p_value)
 void Local_MIP::set_bms_mtm_unsat_op(size_t p_value)
 {
   auto config_lock = lock_configuration();
+  validate_heuristic_count(p_value, "unsatisfied MTM operations");
   m_local_search->set_bms_mtm_unsat_op(p_value);
   printf("c unsatisfied MTM operations: %zu\n", p_value);
 }
@@ -405,6 +425,7 @@ void Local_MIP::set_bms_mtm_unsat_op(size_t p_value)
 void Local_MIP::set_bms_sat_con(size_t p_value)
 {
   auto config_lock = lock_configuration();
+  validate_heuristic_count(p_value, "satisfied constraint sample size");
   m_local_search->set_bms_sat_con(p_value);
   printf("c satisfied constraint sample size : %zu\n", p_value);
 }
@@ -412,6 +433,7 @@ void Local_MIP::set_bms_sat_con(size_t p_value)
 void Local_MIP::set_bms_mtm_sat_op(size_t p_value)
 {
   auto config_lock = lock_configuration();
+  validate_heuristic_count(p_value, "satisfied MTM operations");
   m_local_search->set_bms_mtm_sat_op(p_value);
   printf("c satisfied MTM operations : %zu\n", p_value);
 }
@@ -419,6 +441,7 @@ void Local_MIP::set_bms_mtm_sat_op(size_t p_value)
 void Local_MIP::set_bms_flip_op(size_t p_value)
 {
   auto config_lock = lock_configuration();
+  validate_heuristic_count(p_value, "flip operations");
   m_local_search->set_bms_flip_op(p_value);
   printf("c flip operations : %zu\n", p_value);
 }
@@ -426,6 +449,7 @@ void Local_MIP::set_bms_flip_op(size_t p_value)
 void Local_MIP::set_bms_easy_op(size_t p_value)
 {
   auto config_lock = lock_configuration();
+  validate_heuristic_count(p_value, "easy operations");
   m_local_search->set_bms_easy_op(p_value);
   printf("c easy operations : %zu\n", p_value);
 }
@@ -433,6 +457,7 @@ void Local_MIP::set_bms_easy_op(size_t p_value)
 void Local_MIP::set_bms_random_op(size_t p_value)
 {
   auto config_lock = lock_configuration();
+  validate_heuristic_count(p_value, "random operations");
   m_local_search->set_bms_random_op(p_value);
   printf("c random unsatisfied operations : %zu\n", p_value);
 }
@@ -449,6 +474,8 @@ void Local_MIP::add_neighbor(const std::string& p_neighbor_name,
                              size_t p_bms_op)
 {
   auto config_lock = lock_configuration();
+  validate_heuristic_count(p_bms_con, "neighbor constraint sample size");
+  validate_heuristic_count(p_bms_op, "neighbor operation sample size");
   m_local_search->add_neighbor(p_neighbor_name, p_bms_con, p_bms_op);
   printf("c added neighbor: %s (bms_con=%zu, bms_op=%zu)\n",
          p_neighbor_name.c_str(),
@@ -477,6 +504,7 @@ void Local_MIP::reset_default_neighbor_list()
 void Local_MIP::set_tabu_base(size_t p_value)
 {
   auto config_lock = lock_configuration();
+  validate_heuristic_count(p_value, "tabu base");
   m_local_search->set_tabu_base(p_value);
   printf("c tabu tenure base : %zu\n", p_value);
 }
@@ -484,6 +512,7 @@ void Local_MIP::set_tabu_base(size_t p_value)
 void Local_MIP::set_activity_period(size_t p_value)
 {
   auto config_lock = lock_configuration();
+  validate_heuristic_count(p_value, "activity period", 1);
   m_local_search->set_activity_period(p_value);
   printf("c constraint activity period : %zu\n", p_value);
 }
@@ -491,8 +520,7 @@ void Local_MIP::set_activity_period(size_t p_value)
 void Local_MIP::set_tabu_variation(size_t p_value)
 {
   auto config_lock = lock_configuration();
-  if (p_value == 0)
-    throw std::invalid_argument("tabu variation must be at least 1");
+  validate_heuristic_count(p_value, "tabu variation", 1);
   m_local_search->set_tabu_variation(p_value);
   printf("c tabu tenure variation : %zu\n", p_value);
 }
@@ -562,14 +590,16 @@ void Local_MIP::run_impl()
            result.m_unknown_var_num);
   }
 
+  m_local_search->configure_incumbent_trace(m_log_obj_enabled,
+                                            m_time_limit);
   m_run_start = std::chrono::steady_clock::now();
+  m_local_search->start_incumbent_trace(m_run_start);
   {
     std::lock_guard<std::mutex> lock(m_timeout_mutex);
     m_cancel_timeout = false;
   }
   auto stop_background_tasks = [this]()
   {
-    stop_obj_logger();
     request_timeout_stop();
     if (m_timeout_thread.joinable())
       m_timeout_thread.join();
@@ -577,7 +607,6 @@ void Local_MIP::run_impl()
   try
   {
     m_timeout_thread = std::thread(&Local_MIP::timeout_handler, this);
-    start_obj_logger();
     m_local_search->run_search(start_solution, start_solution_mask);
   }
   catch (...)
@@ -592,7 +621,10 @@ void Local_MIP::run_impl()
            elapsed_seconds());
   }
   if (m_local_search->finalize_result())
+  {
+    m_local_search->finish_incumbent_trace();
     m_local_search->output_result();
+  }
   else
     printf("o solution verify failed.\n");
   printf("c [%10.2lf] local search is finished.\n", elapsed_seconds());
@@ -644,44 +676,6 @@ void Local_MIP::request_timeout_stop()
     m_cancel_timeout = true;
   }
   m_timeout_cv.notify_all();
-}
-
-void Local_MIP::start_obj_logger()
-{
-  if (!m_log_obj_enabled)
-    return;
-  stop_obj_logger();
-  m_stop_obj_log.store(false, std::memory_order_relaxed);
-  m_obj_log_thread = std::thread(&Local_MIP::obj_log_handler, this);
-}
-
-void Local_MIP::stop_obj_logger()
-{
-  m_stop_obj_log.store(true, std::memory_order_relaxed);
-  if (m_obj_log_thread.joinable())
-    m_obj_log_thread.join();
-}
-
-void Local_MIP::obj_log_handler()
-{
-  double last_value = std::numeric_limits<double>::quiet_NaN();
-  bool has_value = false;
-  while (true)
-  {
-    double current_value = m_local_search->get_obj_value();
-    if (!std::isnan(current_value) &&
-        (!has_value || current_value != last_value))
-    {
-      last_value = current_value;
-      has_value = true;
-      printf("c [%10.2lf] obj*: %-22.17g\n",
-             elapsed_seconds(),
-             current_value);
-    }
-    if (m_stop_obj_log.load(std::memory_order_relaxed))
-      break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
 }
 
 double Local_MIP::elapsed_seconds() const
