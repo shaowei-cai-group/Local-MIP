@@ -12,18 +12,15 @@
 =====================================================================================*/
 
 #include "../../utils/global_defs.h"
+#include "../../utils/string_utils.h"
 #include "../context/context.h"
 #include "scoring.h"
 #include <algorithm>
-#include <cctype>
-#include <cmath>
 #include <cstddef>
-#include <cstdint>
 #include <random>
 #include <stdexcept>
 #include <string>
 #include <utility>
-#include <vector>
 
 void Scoring::set_lift_cbk(Lift_Cbk p_cbk, void* p_user_data)
 {
@@ -108,12 +105,7 @@ void Scoring::lift_random(Lift_Ctx& p_ctx,
 
 void Scoring::set_lift_method(const std::string& p_method_name)
 {
-  std::string method = p_method_name;
-  std::transform(method.begin(),
-                 method.end(),
-                 method.begin(),
-                 [](unsigned char ch)
-                 { return static_cast<char>(std::tolower(ch)); });
+  const std::string method = string_utils::to_lower_copy(p_method_name);
   if (method.empty() || method == "lift_age")
     m_lift_method = Lift_Method::lift_age;
   else if (method == "lift_random")

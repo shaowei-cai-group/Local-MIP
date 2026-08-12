@@ -14,11 +14,11 @@
 #include "../../model_data/Model_Manager.h"
 #include "../../model_data/Model_Var.h"
 #include "../../utils/global_defs.h"
+#include "../../utils/string_utils.h"
 #include "../context/context.h"
 #include "restart.h"
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <random>
@@ -50,12 +50,7 @@ void Restart::set_cbk(Restart_Cbk p_restart_cbk, void* p_user_data)
 
 void Restart::set_method(const std::string& p_restart_name)
 {
-  std::string method = p_restart_name;
-  std::transform(method.begin(),
-                 method.end(),
-                 method.begin(),
-                 [](unsigned char ch)
-                 { return static_cast<char>(std::tolower(ch)); });
+  const std::string method = string_utils::to_lower_copy(p_restart_name);
   if (method.empty() || method == "random")
     m_default_strategy = Strategy::random;
   else if (method == "best")

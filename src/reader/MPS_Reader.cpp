@@ -12,19 +12,18 @@
 =====================================================================================*/
 
 #include "../model_data/Model_Con.h"
+#include "../model_data/Model_Manager.h"
 #include "../model_data/Model_Var.h"
 #include "../utils/global_defs.h"
 #include "../utils/solver_error.h"
 #include "MPS_Reader.h"
-#include <cassert>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
-#include <cstdlib>
 #include <fstream>
 #include <ios>
-#include <iostream>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -34,6 +33,45 @@ MPS_Reader::MPS_Reader(Model_Manager* p_model_manager)
     : m_model_manager(p_model_manager), m_integrality_marker(false),
       m_small_coeff_counter(0)
 {
+}
+
+void MPS_Reader::iss_setup()
+{
+  m_iss.clear();
+  const size_t data_size = record_data_size(m_read_line);
+  if (data_size == m_read_line.size())
+    m_iss.str(m_read_line);
+  else
+    m_iss.str(m_read_line.substr(0, data_size));
+  m_iss.seekg(0, std::ios::beg);
+}
+
+size_t MPS_Reader::record_data_size(const std::string& p_record) const
+{
+  for (size_t idx = 1; idx < p_record.size(); ++idx)
+  {
+    if (p_record[idx] == '$' &&
+        std::isspace(static_cast<unsigned char>(p_record[idx - 1])))
+      return idx;
+  }
+  return p_record.size();
+}
+
+bool MPS_Reader::is_blank(const std::string& p_record) const
+{
+  const size_t data_size = record_data_size(p_record);
+  for (size_t idx = 0; idx < data_size; ++idx)
+    if (!std::isspace(static_cast<unsigned char>(p_record[idx])))
+      return false;
+  return true;
+}
+
+[[noreturn]] void
+MPS_Reader::printf_error_line(const std::string& p_line) const
+{
+  std::string message = "c error line: " + p_line;
+  printf("%s\n", message.c_str());
+  throw Solver_Error(message);
 }
 
 bool MPS_Reader::read_optional_bound_value(double& p_value)
@@ -166,10 +204,9 @@ void MPS_Reader::read(const char* p_model_file)
     iss_setup();
     if (!(m_iss >> con_type >> con_name))
     {
-      if (!is_blank(m_read_line))
-        printf_error_line(m_read_line);
-      else
+      if (is_blank(m_read_line))
         continue;
+      printf_error_line(m_read_line);
     }
 
     std::string extra_field;
@@ -223,10 +260,9 @@ void MPS_Reader::read(const char* p_model_file)
     iss_setup();
     if (!(m_iss >> var_name >> con_name))
     {
-      if (!is_blank(m_read_line))
-        printf_error_line(m_read_line);
-      else
+      if (is_blank(m_read_line))
         continue;
+      printf_error_line(m_read_line);
     }
     if (con_name == "\'MARKER\'")
     {
@@ -287,10 +323,9 @@ void MPS_Reader::read(const char* p_model_file)
     iss_setup();
     if (!(m_iss >> temp_str >> con_name >> rhs))
     {
-      if (!is_blank(m_read_line))
-        printf_error_line(m_read_line);
-      else
+      if (is_blank(m_read_line))
         continue;
+      printf_error_line(m_read_line);
     }
     if (!std::isfinite(rhs))
       printf_error_line(m_read_line);
@@ -332,11 +367,7 @@ void MPS_Reader::read(const char* p_model_file)
       auto& new_con = m_model_manager->con(new_idx);
       new_con.set_rhs(new_rhs);
       for (const auto& [var_idx, term_coeff] : terms)
-      {
-        auto& var = m_model_manager->var(var_idx);
-        var.add_con(new_idx, new_con.term_num());
-        new_con.add_var(var_idx, term_coeff, var.term_num() - 1);
-      }
+        m_model_manager->add_term(new_idx, var_idx, term_coeff);
     };
     auto apply_range_to_row =
         [&](const std::string& row_name, double range_value)
@@ -382,10 +413,9 @@ void MPS_Reader::read(const char* p_model_file)
       double range_value = 0.0;
       if (!(m_iss >> temp_str >> con_name >> range_value))
       {
-        if (!is_blank(m_read_line))
-          printf_error_line(m_read_line);
-        else
+        if (is_blank(m_read_line))
           continue;
+        printf_error_line(m_read_line);
       }
       if (!std::isfinite(range_value))
         printf_error_line(m_read_line);
@@ -419,10 +449,9 @@ void MPS_Reader::read(const char* p_model_file)
     iss_setup();
     if (!(m_iss >> bound_type >> temp_str >> var_name))
     {
-      if (!is_blank(m_read_line))
-        printf_error_line(m_read_line);
-      else
+      if (is_blank(m_read_line))
         continue;
+      printf_error_line(m_read_line);
     }
     const bool requires_value = bound_type == "UP" || bound_type == "LO" ||
                                 bound_type == "LI" || bound_type == "UI" ||
@@ -442,7 +471,9 @@ void MPS_Reader::read(const char* p_model_file)
       selected_bound_name = temp_str;
     if (temp_str != selected_bound_name)
       continue;
-    if (!m_model_manager->exists_var(var_name))
+    const auto& var_name_to_idx = m_model_manager->var_name_to_idx();
+    const auto var_iter = var_name_to_idx.find(var_name);
+    if (var_iter == var_name_to_idx.end())
       printf_error_line(m_read_line);
 
     const bool sets_lower = bound_type == "LO" || bound_type == "LI" ||
@@ -460,7 +491,7 @@ void MPS_Reader::read(const char* p_model_file)
     if (sets_upper)
       upper_bound_vars.insert(var_name);
 
-    auto& var = m_model_manager->var(var_name);
+    auto& var = m_model_manager->var(var_iter->second);
     if (bound_type != "BV" && var.type() == Var_Type::binary)
     {
       m_model_manager->set_var_type(var, Var_Type::general_integer);
@@ -525,7 +556,7 @@ void MPS_Reader::read(const char* p_model_file)
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       end_time - start_time);
   printf("c reading mps file takes %.2lf seconds.\n",
-         duration.count() / 1000.0);
+         static_cast<double>(duration.count()) / 1000.0);
 }
 
 void MPS_Reader::add_coeff_var_to_con(const std::string& p_con_name,
@@ -542,32 +573,9 @@ void MPS_Reader::add_coeff_var_to_con(const std::string& p_con_name,
     return;
   }
   size_t con_idx;
-  Model_Con* con;
   if (p_con_name == m_model_manager->get_obj_name())
-  {
     con_idx = 0;
-    con = &m_model_manager->con(0);
-  }
   else
-  {
     con_idx = m_model_manager->con_idx(p_con_name);
-    con = &m_model_manager->con(con_idx);
-  }
-  auto& var = m_model_manager->var(var_idx);
-  var.add_con(con_idx, con->term_num());
-  con->add_var(var_idx, p_coeff, var.term_num() - 1);
-}
-
-void MPS_Reader::print_con(const Model_Con& p_con)
-{
-  printf("c %s: ", p_con.name().c_str());
-  for (size_t i = 0; i < p_con.term_num(); ++i)
-  {
-    printf("%lf * %s",
-           p_con.coeff(i),
-           m_model_manager->var(p_con.var_idx(i)).name().c_str());
-    if (i < p_con.term_num() - 1)
-      printf(" + ");
-  }
-  printf(" %c %lf\n", p_con.is_equality() ? '=' : '<', p_con.rhs());
+  m_model_manager->add_term(con_idx, var_idx, p_coeff);
 }

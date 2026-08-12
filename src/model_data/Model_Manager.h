@@ -16,14 +16,14 @@
 #include "Model_Con.h"
 #include "Model_Var.h"
 #include <cassert>
-#include <cmath>
 #include <cstddef>
-#include <cstdio>
-#include <cstdlib>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
+
+class LP_Reader;
+class MPS_Reader;
+class Model_API;
 
 class Model_Manager
 {
@@ -69,11 +69,6 @@ private:
   size_t m_real_num;
 
   size_t m_con_num;
-
-  std::unordered_map<Con_Type, std::vector<size_t>> m_type_to_con_idx_list;
-
-  std::unordered_map<Con_Type, std::unordered_set<size_t>>
-      m_type_to_con_idx_set;
 
   size_t m_delete_con_num;
 
@@ -180,6 +175,14 @@ public:
   inline const std::vector<double>& var_obj_cost() const;
 
 private:
+  friend class LP_Reader;
+
+  friend class MPS_Reader;
+
+  friend class Model_API;
+
+  void add_term(size_t p_con_idx, size_t p_var_idx, double p_coeff);
+
   void normalize_integral_bounds(Model_Var& p_var) const;
 
   bool canonicalize_var_bounds(Model_Var& p_var) const;
@@ -200,7 +203,8 @@ private:
 
   void classify_con(Model_Con& p_con);
 
-  void print_cons_type_summary() const;
+  void print_cons_type_summary(
+      const std::unordered_map<Con_Type, size_t>& p_type_counts) const;
 
   void convert_eq_to_ineq();
 
@@ -289,7 +293,7 @@ Model_Manager::var_name_to_idx() const
 
 inline bool Model_Manager::exists_var(const std::string& p_name) const
 {
-  return m_var_name_to_idx.find(p_name) != m_var_name_to_idx.end();
+  return m_var_name_to_idx.contains(p_name);
 }
 
 inline size_t Model_Manager::con_idx(const std::string& p_name) const

@@ -21,8 +21,6 @@
 #include <string>
 #include <vector>
 
-class Model_Manager;
-
 class Scoring
 {
 public:
@@ -139,13 +137,10 @@ private:
   void
   lift_random(Lift_Ctx& p_ctx, size_t p_var_idx, double p_delta) const;
 
-  void progress_bonus(Neighbor_Ctx& p_ctx,
-                      size_t p_var_idx,
-                      double p_delta) const;
-
-  void progress_age(Neighbor_Ctx& p_ctx,
-                    size_t p_var_idx,
-                    double p_delta) const;
+  void progress(Neighbor_Ctx& p_ctx,
+                size_t p_var_idx,
+                double p_delta,
+                bool p_use_bonus) const;
 };
 
 inline bool Scoring::has_lift_callback() const

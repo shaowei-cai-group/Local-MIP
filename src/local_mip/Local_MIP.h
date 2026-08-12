@@ -67,6 +67,8 @@ private:
 
   void request_timeout_stop();
 
+  void stop_timeout_thread();
+
   void timeout_handler();
 
   double elapsed_seconds() const;

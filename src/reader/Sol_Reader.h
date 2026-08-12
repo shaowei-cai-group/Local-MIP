@@ -15,10 +15,11 @@
 
 #pragma once
 
-#include "../model_data/Model_Manager.h"
 #include <cstddef>
 #include <string>
 #include <vector>
+
+class Model_Manager;
 
 struct Sol_Read_Result
 {
@@ -40,7 +41,5 @@ public:
                               std::vector<char>* p_loaded_mask = nullptr);
 
 private:
-  static std::string trim(const std::string& p_text);
-
   static bool parse_value(const std::string& p_text, double& p_value);
 };

@@ -15,10 +15,10 @@
 #include "../../model_data/Model_Manager.h"
 #include "../../model_data/Model_Var.h"
 #include "../../utils/global_defs.h"
+#include "../../utils/string_utils.h"
 #include "../context/context.h"
 #include "scoring.h"
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -35,12 +35,7 @@ void Scoring::set_neighbor_cbk(Neighbor_Cbk p_cbk, void* p_user_data)
 
 void Scoring::set_neighbor_method(const std::string& p_method_name)
 {
-  std::string method = p_method_name;
-  std::transform(method.begin(),
-                 method.end(),
-                 method.begin(),
-                 [](unsigned char ch)
-                 { return static_cast<char>(std::tolower(ch)); });
+  const std::string method = string_utils::to_lower_copy(p_method_name);
   if (method.empty() || method == "progress_bonus")
     m_neighbor_method = Neighbor_Method::progress_bonus;
   else if (method == "progress_age")
@@ -78,19 +73,20 @@ void Scoring::score_neighbor(Neighbor_Ctx& p_ctx,
     m_neighbor_cbk(p_ctx, p_var_idx, p_delta, m_neighbor_user_data);
     return;
   }
-  if (m_neighbor_method == Neighbor_Method::progress_age)
-    progress_age(p_ctx, p_var_idx, p_delta);
-  else
-    progress_bonus(p_ctx, p_var_idx, p_delta);
+  progress(p_ctx,
+           p_var_idx,
+           p_delta,
+           m_neighbor_method == Neighbor_Method::progress_bonus);
 }
 
-void Scoring::progress_bonus(Neighbor_Ctx& p_ctx,
-                             size_t p_var_idx,
-                             double p_delta) const
+void Scoring::progress(Neighbor_Ctx& p_ctx,
+                       size_t p_var_idx,
+                       double p_delta,
+                       bool p_use_bonus) const
 {
-  auto& model_var = p_ctx.m_shared.m_model_manager.var(p_var_idx);
-  const double feas_tolerance =
-      p_ctx.m_shared.m_model_manager.feas_tolerance();
+  const auto& model_manager = p_ctx.m_shared.m_model_manager;
+  const auto& model_var = model_manager.var(p_var_idx);
+  const double feas_tolerance = model_manager.feas_tolerance();
   if (model_var.type() == Var_Type::binary)
   {
     if (p_ctx.m_binary_op_stamp[p_var_idx] ==
@@ -100,14 +96,14 @@ void Scoring::progress_bonus(Neighbor_Ctx& p_ctx,
   }
   long neighbor_score = 0;
   long bonus_score = 0;
-  size_t term_num = model_var.term_num();
+  const size_t term_num = model_var.term_num();
   if (term_num == 0)
     return;
   for (size_t term_idx = 0; term_idx < term_num; ++term_idx)
   {
-    size_t con_idx = model_var.con_idx(term_idx);
-    size_t pos_in_con = model_var.pos_in_con(term_idx);
-    auto& model_con = p_ctx.m_shared.m_model_manager.con(con_idx);
+    const size_t con_idx = model_var.con_idx(term_idx);
+    const size_t pos_in_con = model_var.pos_in_con(term_idx);
+    const auto& model_con = model_manager.con(con_idx);
     const long con_weight =
         static_cast<long>(p_ctx.m_shared.m_con_weight[con_idx]);
     const long scaled_con_weight = con_weight * 2;
@@ -119,7 +115,7 @@ void Scoring::progress_bonus(Neighbor_Ctx& p_ctx,
         neighbor_score += scaled_con_weight;
       else
         neighbor_score -= scaled_con_weight;
-      if (new_obj < p_ctx.m_shared.m_best_obj)
+      if (p_use_bonus && new_obj < p_ctx.m_shared.m_best_obj)
         bonus_score += con_weight;
     }
     else
@@ -165,110 +161,25 @@ void Scoring::progress_bonus(Neighbor_Ctx& p_ctx,
       }
     }
   }
-  size_t age = std::max(p_ctx.m_shared.m_var_last_dec_step[p_var_idx],
-                        p_ctx.m_shared.m_var_last_inc_step[p_var_idx]);
-  if (p_ctx.m_best_neighbor_score < neighbor_score ||
-      (p_ctx.m_best_neighbor_score == neighbor_score &&
-       p_ctx.m_best_neighbor_subscore < bonus_score) ||
-      (p_ctx.m_best_neighbor_score == neighbor_score &&
-       p_ctx.m_best_neighbor_subscore == bonus_score &&
-       age < p_ctx.m_best_age))
+  const size_t age =
+      std::max(p_ctx.m_shared.m_var_last_dec_step[p_var_idx],
+               p_ctx.m_shared.m_var_last_inc_step[p_var_idx]);
+  bool is_better = p_ctx.m_best_neighbor_score < neighbor_score;
+  if (p_ctx.m_best_neighbor_score == neighbor_score)
   {
-    p_ctx.m_best_var_idx = p_var_idx;
-    p_ctx.m_best_delta = p_delta;
-    p_ctx.m_best_neighbor_score = neighbor_score;
-    p_ctx.m_best_neighbor_subscore = bonus_score;
-    p_ctx.m_best_age = age;
+    is_better = p_use_bonus
+                    ? p_ctx.m_best_neighbor_subscore < bonus_score ||
+                          (p_ctx.m_best_neighbor_subscore == bonus_score &&
+                           age < p_ctx.m_best_age)
+                    : age < p_ctx.m_best_age;
   }
-}
-
-void Scoring::progress_age(Neighbor_Ctx& p_ctx,
-                           size_t p_var_idx,
-                           double p_delta) const
-{
-  auto& model_var = p_ctx.m_shared.m_model_manager.var(p_var_idx);
-  const double feas_tolerance =
-      p_ctx.m_shared.m_model_manager.feas_tolerance();
-  if (model_var.type() == Var_Type::binary)
-  {
-    if (p_ctx.m_binary_op_stamp[p_var_idx] ==
-        p_ctx.m_binary_op_stamp_token)
-      return;
-    p_ctx.m_binary_op_stamp[p_var_idx] = p_ctx.m_binary_op_stamp_token;
-  }
-  long neighbor_score = 0;
-  size_t term_num = model_var.term_num();
-  if (term_num == 0)
+  if (!is_better)
     return;
-  for (size_t term_idx = 0; term_idx < term_num; ++term_idx)
-  {
-    size_t con_idx = model_var.con_idx(term_idx);
-    size_t pos_in_con = model_var.pos_in_con(term_idx);
-    auto& model_con = p_ctx.m_shared.m_model_manager.con(con_idx);
-    const long con_weight =
-        static_cast<long>(p_ctx.m_shared.m_con_weight[con_idx]);
-    const long scaled_con_weight = con_weight * 2;
-    if (con_idx == 0 && p_ctx.m_shared.m_is_found_feasible)
-    {
-      double new_obj = p_ctx.m_shared.m_con_activity[con_idx] +
-                       model_con.coeff(pos_in_con) * p_delta;
-      if (new_obj < p_ctx.m_shared.m_con_activity[con_idx])
-        neighbor_score += scaled_con_weight;
-      else
-        neighbor_score -= scaled_con_weight;
-    }
-    else
-    {
-      double new_activity = p_ctx.m_shared.m_con_activity[con_idx] +
-                            model_con.coeff(pos_in_con) * p_delta;
-      double pre_gap = p_ctx.m_shared.m_con_activity[con_idx] -
-                       p_ctx.m_shared.m_con_constant[con_idx];
-      double new_gap =
-          new_activity - p_ctx.m_shared.m_con_constant[con_idx];
-      bool pre_sat;
-      if (p_ctx.m_shared.m_con_is_equality[con_idx])
-      {
-        pre_sat = std::fabs(pre_gap) <= feas_tolerance;
-        bool now_sat = std::fabs(new_gap) <= feas_tolerance;
-        if (!pre_sat && now_sat)
-          neighbor_score += scaled_con_weight * 2;
-        else if (pre_sat && !now_sat)
-          neighbor_score -= scaled_con_weight * 2;
-        else if (!pre_sat && !now_sat)
-        {
-          if (std::fabs(new_gap) < std::fabs(pre_gap))
-            neighbor_score += scaled_con_weight;
-          else
-            neighbor_score -= scaled_con_weight;
-        }
-      }
-      else
-      {
-        pre_sat = pre_gap <= feas_tolerance;
-        bool now_sat = new_gap <= feas_tolerance;
-        if (!pre_sat && now_sat)
-          neighbor_score += scaled_con_weight;
-        else if (pre_sat && !now_sat)
-          neighbor_score -= scaled_con_weight;
-        else if (!pre_sat && !now_sat)
-        {
-          if (new_gap < pre_gap)
-            neighbor_score += con_weight;
-          else
-            neighbor_score -= con_weight;
-        }
-      }
-    }
-  }
-  size_t age = std::max(p_ctx.m_shared.m_var_last_dec_step[p_var_idx],
-                        p_ctx.m_shared.m_var_last_inc_step[p_var_idx]);
-  if (p_ctx.m_best_neighbor_score < neighbor_score ||
-      (p_ctx.m_best_neighbor_score == neighbor_score &&
-       age < p_ctx.m_best_age))
-  {
-    p_ctx.m_best_var_idx = p_var_idx;
-    p_ctx.m_best_delta = p_delta;
-    p_ctx.m_best_neighbor_score = neighbor_score;
-    p_ctx.m_best_age = age;
-  }
+
+  p_ctx.m_best_var_idx = p_var_idx;
+  p_ctx.m_best_delta = p_delta;
+  p_ctx.m_best_neighbor_score = neighbor_score;
+  if (p_use_bonus)
+    p_ctx.m_best_neighbor_subscore = bonus_score;
+  p_ctx.m_best_age = age;
 }

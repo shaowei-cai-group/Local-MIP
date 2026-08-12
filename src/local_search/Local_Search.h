@@ -15,7 +15,6 @@
 #include "../model_data/Model_Con.h"
 #include "../model_data/Model_Manager.h"
 #include "../utils/global_defs.h"
-#include "../utils/solver_error.h"
 #include "context/context.h"
 #include "incumbent_trace.h"
 #include "neighbor/neighbor.h"
@@ -29,7 +28,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <random>
@@ -68,7 +66,7 @@ private:
 
   bool m_is_keep_feas;
 
-  bool m_strct_feas;
+  bool m_strict_feas;
 
   bool m_break_eq_feas;
 
@@ -204,10 +202,6 @@ private:
   inline void insert_sat(size_t p_con_idx);
 
   inline void delete_sat(size_t p_con_idx);
-
-  inline bool tabu(size_t p_var_idx, double p_delta);
-
-  inline bool tabu_latest(size_t p_var_idx, double p_delta);
 
   double lift_move_operation(size_t p_term_idx, size_t p_var_idx);
 
@@ -492,52 +486,4 @@ inline void Local_Search::reset_op(bool p_require_positive)
   m_best_var_idx = SIZE_MAX;
   m_best_delta = 0;
   m_best_age = SIZE_MAX;
-}
-
-inline bool
-Local_Search::explore_neighbor(std::vector<Neighbor>& p_explore_neighbors)
-{
-  assert(!p_explore_neighbors.empty());
-  bool validate_selected_move = m_scoring.has_neighbor_callback();
-  reset_op(true);
-  for (auto& neighbor : p_explore_neighbors)
-  {
-    m_op_var_deltas.clear();
-    m_op_var_idxs.clear();
-    m_op_size = 0;
-    if (&neighbor == &p_explore_neighbors.back())
-    {
-      reset_op(false);
-      m_weight.update(m_weight_ctx);
-    }
-    neighbor.explore(m_neighbor_ctx);
-    const bool user_defined = neighbor.is_user_defined();
-    if (user_defined)
-    {
-      validate_selected_move = true;
-      if (m_op_size > m_op_var_idxs.size() ||
-          m_op_size > m_op_var_deltas.size())
-      {
-        throw Solver_Error(
-            "neighbor callback returned inconsistent operation arrays");
-      }
-    }
-    else
-      assert(m_op_size <= m_op_var_idxs.size() &&
-             m_op_size <= m_op_var_deltas.size());
-    for (size_t op_idx = 0; op_idx < m_op_size; ++op_idx)
-    {
-      if (user_defined && m_op_var_idxs[op_idx] >= m_var_num)
-      {
-        throw Solver_Error(
-            "neighbor callback variable index is out of range: " +
-            std::to_string(m_op_var_idxs[op_idx]));
-      }
-      m_scoring.score_neighbor(
-          m_scoring_ctx, m_op_var_idxs[op_idx], m_op_var_deltas[op_idx]);
-    }
-    if (m_best_neighbor_score > 0)
-      break;
-  }
-  return validate_selected_move;
 }

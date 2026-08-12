@@ -11,12 +11,8 @@
 
 =====================================================================================*/
 
-#include "../../utils/global_defs.h"
 #include "neighbor.h"
-#include <cmath>
 #include <cstddef>
-#include <cstdio>
-#include <vector>
 
 void Neighbor::explore_sat_mtm(Neighbor_Ctx& p_ctx)
 {
@@ -24,7 +20,7 @@ void Neighbor::explore_sat_mtm(Neighbor_Ctx& p_ctx)
       !p_ctx.m_shared.m_is_found_feasible || m_bms_con == 0 ||
       m_bms_op == 0)
     return;
-  if (p_ctx.m_shared.m_con_sat_idxs.size() > 0)
+  if (!p_ctx.m_shared.m_con_sat_idxs.empty())
   {
     size_t neighbor_size = 0;
     auto& neighbor_con_idxs = sample_idxs(
@@ -45,12 +41,7 @@ void Neighbor::explore_sat_mtm(Neighbor_Ctx& p_ctx)
             con_idx, term_idx, var_idx, p_ctx);
         if (tabu(p_ctx, var_idx, delta))
           continue;
-        if (is_effectively_zero(
-                delta,
-                p_ctx.m_shared.m_model_manager.zero_tolerance()))
-          continue;
-        p_ctx.m_op_var_idxs.push_back(var_idx);
-        p_ctx.m_op_var_deltas.push_back(delta);
+        append_nonzero_op(p_ctx, var_idx, delta);
       }
     }
   }

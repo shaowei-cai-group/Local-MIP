@@ -107,9 +107,10 @@ int main(int argc, char* argv[])
     if (restart != "best")
       solver->set_restart_method(restart);
     if (restart_step != 1000000)
-      solver->set_restart_step(restart_step);
+      solver->set_restart_step(static_cast<size_t>(restart_step));
     if (smooth_prob != 1)
-      solver->set_weight_smooth_probability(smooth_prob);
+      solver->set_weight_smooth_probability(
+          static_cast<size_t>(smooth_prob));
     if (bms_unsat_con != 10)
       solver->set_bms_unsat_con(static_cast<size_t>(bms_unsat_con));
     if (bms_unsat_ops != 2250)

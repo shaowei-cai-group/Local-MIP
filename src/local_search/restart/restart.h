@@ -90,10 +90,9 @@ private:
 
 inline bool Restart::should_restart(Restart_Ctx& p_ctx) const
 {
-  if (m_restart_step == 0)
-    return false;
-  return p_ctx.m_shared.m_cur_step >
-         p_ctx.m_shared.m_last_improve_step + m_restart_step;
+  return m_restart_step != 0 &&
+         p_ctx.m_shared.m_cur_step >
+             p_ctx.m_shared.m_last_improve_step + m_restart_step;
 }
 
 inline bool Restart::has_user_callback() const

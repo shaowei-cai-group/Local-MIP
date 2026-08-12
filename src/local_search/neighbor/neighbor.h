@@ -19,6 +19,7 @@
 #include <random>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 class Neighbor
@@ -130,6 +131,10 @@ private:
                           std::vector<double>& p_op_var_deltas,
                           Neighbor_Ctx& p_ctx);
 
+  static void append_nonzero_op(Neighbor_Ctx& p_ctx,
+                                size_t p_var_idx,
+                                double p_delta);
+
   static bool tabu(Neighbor_Ctx& p_ctx, size_t p_var_idx, double p_delta);
 
   static bool
@@ -139,6 +144,17 @@ private:
 inline bool Neighbor::is_user_defined() const
 {
   return m_strategy == Strategy::user_defined;
+}
+
+inline void Neighbor::append_nonzero_op(Neighbor_Ctx& p_ctx,
+                                        size_t p_var_idx,
+                                        double p_delta)
+{
+  if (is_effectively_zero(
+          p_delta, p_ctx.m_shared.m_model_manager.zero_tolerance()))
+    return;
+  p_ctx.m_op_var_idxs.push_back(p_var_idx);
+  p_ctx.m_op_var_deltas.push_back(p_delta);
 }
 
 inline size_t Neighbor::sample_op(size_t p_max_ops,

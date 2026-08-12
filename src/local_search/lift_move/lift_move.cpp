@@ -13,40 +13,49 @@
 
 #include "../../utils/global_defs.h"
 #include "../Local_Search.h"
-#include <cassert>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
-#include <unordered_set>
-#include <vector>
 
 
 bool Local_Search::lift_move()
 {
   const bool validate_selected_move = m_scoring.has_lift_callback();
-  reset_op(true);
-  m_strct_feas = true;
-  auto& model_obj = m_model_manager->obj();
-  if (!m_is_keep_feas)
+  auto evaluate_lift_moves = [this](bool p_recompute_deltas)
   {
+    const auto& model_obj = m_model_manager->obj();
+    if (p_recompute_deltas)
+    {
+      for (size_t term_idx = 0; term_idx < m_obj_var_num; ++term_idx)
+      {
+        const size_t var_idx = model_obj.var_idx(term_idx);
+        m_var_lift_delta[term_idx] =
+            lift_move_operation(term_idx, var_idx);
+      }
+    }
     for (size_t term_idx = 0; term_idx < m_obj_var_num; ++term_idx)
     {
-      size_t var_idx = model_obj.var_idx(term_idx);
-      double delta = lift_move_operation(term_idx, var_idx);
-      m_var_lift_delta[term_idx] = delta;
+      m_scoring.score_lift(m_lift_ctx,
+                           model_obj.var_idx(term_idx),
+                           m_var_lift_delta[term_idx]);
     }
-  }
-  for (size_t term_idx = 0; term_idx < m_obj_var_num; ++term_idx)
-    m_scoring.score_lift(m_lift_ctx,
-                         model_obj.var_idx(term_idx),
-                         m_var_lift_delta[term_idx]);
-  if (m_best_var_idx != SIZE_MAX && m_best_delta != 0)
+  };
+  auto apply_best_lift_move = [this, validate_selected_move]()
   {
+    if (m_best_var_idx == SIZE_MAX || m_best_delta == 0.0)
+      return false;
     if (validate_selected_move)
       apply_checked_move(
           m_best_var_idx, m_best_delta, "selected lift move");
     else
       apply_move(m_best_var_idx, m_best_delta);
+    return true;
+  };
+
+  reset_op(true);
+  m_strict_feas = true;
+  evaluate_lift_moves(!m_is_keep_feas);
+  if (apply_best_lift_move())
+  {
     size_t obj_term_idx =
         m_model_manager->var_id_to_obj_idx(m_best_var_idx);
     if (obj_term_idx != SIZE_MAX)
@@ -77,26 +86,9 @@ bool Local_Search::lift_move()
   if (m_break_eq_feas)
   {
     m_is_keep_feas = false;
-    m_strct_feas = false;
-    auto& refreshed_model_obj = m_model_manager->obj();
-    for (size_t term_idx = 0; term_idx < m_obj_var_num; ++term_idx)
-    {
-      size_t var_idx = refreshed_model_obj.var_idx(term_idx);
-      double delta = lift_move_operation(term_idx, var_idx);
-      m_var_lift_delta[term_idx] = delta;
-    }
-    for (size_t term_idx = 0; term_idx < m_obj_var_num; ++term_idx)
-      m_scoring.score_lift(m_lift_ctx,
-                           refreshed_model_obj.var_idx(term_idx),
-                           m_var_lift_delta[term_idx]);
-    if (m_best_var_idx != SIZE_MAX && m_best_delta != 0)
-    {
-      if (validate_selected_move)
-        apply_checked_move(
-            m_best_var_idx, m_best_delta, "selected lift move");
-      else
-        apply_move(m_best_var_idx, m_best_delta);
-    }
+    m_strict_feas = false;
+    evaluate_lift_moves(true);
+    apply_best_lift_move();
     return false;
   }
   m_is_keep_feas = false;
@@ -130,7 +122,7 @@ double Local_Search::lift_move_operation(size_t p_term_idx,
     double delta = static_cast<double>(ld_delta);
     if (m_con_is_equality[con_idx])
     {
-      if (m_strct_feas)
+      if (m_strict_feas)
       {
         m_var_LB_feas_delta[p_term_idx] = 0;
         m_var_UB_feas_delta[p_term_idx] = 0;

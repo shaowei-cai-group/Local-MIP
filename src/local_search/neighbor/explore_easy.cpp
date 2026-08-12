@@ -13,12 +13,9 @@
 
 #include "../../utils/global_defs.h"
 #include "neighbor.h"
-#include <cassert>
 #include <cmath>
 #include <cstddef>
-#include <cstdio>
 #include <numeric>
-#include <vector>
 
 void Neighbor::explore_easy(Neighbor_Ctx& p_ctx)
 {
@@ -32,6 +29,15 @@ void Neighbor::explore_easy(Neighbor_Ctx& p_ctx)
                   p_ctx);
   const double feas_tolerance =
       p_ctx.m_shared.m_model_manager.feas_tolerance();
+  auto append_candidate = [&](size_t p_var_idx, double p_delta)
+  {
+    if (std::fabs(p_delta) > feas_tolerance &&
+        !tabu(p_ctx, p_var_idx, p_delta))
+    {
+      p_ctx.m_op_var_idxs.push_back(p_var_idx);
+      p_ctx.m_op_var_deltas.push_back(p_delta);
+    }
+  };
   for (size_t idx = 0; idx < neighbor_size; ++idx)
   {
     size_t var_idx = neighbor_idxs[idx];
@@ -45,11 +51,7 @@ void Neighbor::explore_easy(Neighbor_Ctx& p_ctx)
               p_ctx.m_shared.m_var_current_value[var_idx];
     else
       delta = 0 - p_ctx.m_shared.m_var_current_value[var_idx];
-    if (std::fabs(delta) > feas_tolerance && !tabu(p_ctx, var_idx, delta))
-    {
-      p_ctx.m_op_var_idxs.push_back(var_idx);
-      p_ctx.m_op_var_deltas.push_back(delta);
-    }
+    append_candidate(var_idx, delta);
     bool has_finite_lower = model_var.lower_bound() > k_neg_inf * 0.5;
     bool has_finite_upper = model_var.upper_bound() < k_inf * 0.5;
     if (model_var.is_real() && has_finite_lower && has_finite_upper)
@@ -57,34 +59,19 @@ void Neighbor::explore_easy(Neighbor_Ctx& p_ctx)
       delta =
           std::midpoint(model_var.lower_bound(), model_var.upper_bound()) -
           p_ctx.m_shared.m_var_current_value[var_idx];
-      if (std::fabs(delta) > feas_tolerance &&
-          !tabu(p_ctx, var_idx, delta))
-      {
-        p_ctx.m_op_var_idxs.push_back(var_idx);
-        p_ctx.m_op_var_deltas.push_back(delta);
-      }
+      append_candidate(var_idx, delta);
     }
     if (has_finite_lower && model_var.lower_bound() < 0)
     {
       delta = model_var.lower_bound() -
               p_ctx.m_shared.m_var_current_value[var_idx];
-      if (std::fabs(delta) > feas_tolerance &&
-          !tabu(p_ctx, var_idx, delta))
-      {
-        p_ctx.m_op_var_idxs.push_back(var_idx);
-        p_ctx.m_op_var_deltas.push_back(delta);
-      }
+      append_candidate(var_idx, delta);
     }
     if (has_finite_upper && model_var.upper_bound() > 0)
     {
       delta = model_var.upper_bound() -
               p_ctx.m_shared.m_var_current_value[var_idx];
-      if (std::fabs(delta) > feas_tolerance &&
-          !tabu(p_ctx, var_idx, delta))
-      {
-        p_ctx.m_op_var_idxs.push_back(var_idx);
-        p_ctx.m_op_var_deltas.push_back(delta);
-      }
+      append_candidate(var_idx, delta);
     }
   }
   p_ctx.m_op_size = p_ctx.m_op_var_deltas.size();

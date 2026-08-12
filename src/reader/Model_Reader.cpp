@@ -8,10 +8,10 @@
 =====================================================================================*/
 
 #include "../utils/solver_error.h"
+#include "../utils/string_utils.h"
 #include "LP_Reader.h"
 #include "MPS_Reader.h"
 #include "Model_Reader.h"
-#include <cctype>
 #include <string>
 
 void read_model_file(const std::string& p_model_file,
@@ -21,10 +21,10 @@ void read_model_file(const std::string& p_model_file,
     throw Solver_Error("model file path is empty");
 
   const auto dot_pos = p_model_file.find_last_of('.');
-  std::string extension =
-      dot_pos == std::string::npos ? "" : p_model_file.substr(dot_pos + 1);
-  for (char& ch : extension)
-    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  const std::string extension =
+      dot_pos == std::string::npos
+          ? ""
+          : string_utils::to_lower_copy(p_model_file.substr(dot_pos + 1));
 
   if (extension == "mps")
   {

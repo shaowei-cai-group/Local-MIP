@@ -15,34 +15,22 @@
 #include "Model_Con.h"
 #include "Model_Manager.h"
 #include <cassert>
-#include <cmath>
 #include <cstddef>
 #include <string>
-#include <vector>
 
 Model_Con::Model_Con(const std::string& p_name,
                      const size_t p_idx,
                      const char p_symbol)
-    : m_name(p_name), m_idx(p_idx), m_is_equality(false),
-      m_is_greater(false), m_rhs(0), m_mark_inferred_sat(false)
+    : m_name(p_name), m_idx(p_idx), m_is_equality(p_symbol == '='),
+      m_is_greater(p_symbol == '>'), m_rhs(0), m_mark_inferred_sat(false)
 {
-  if (p_symbol == '=')
-    m_is_equality = true;
-  else if (p_symbol == '>')
-    m_is_greater = true;
   if (m_is_equality)
     m_types.push_back(Con_Type::general_equality);
   else
     m_types.push_back(Con_Type::general_inequality);
 }
 
-Model_Con::~Model_Con()
-{
-  m_coeff_list.clear();
-  m_var_idx_list.clear();
-  m_pos_in_var_list.clear();
-  m_types.clear();
-}
+Model_Con::~Model_Con() = default;
 
 void Model_Con::convert_greater_to_less()
 {

@@ -26,7 +26,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <limits>
-#include <random>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -119,6 +118,52 @@ int Local_Search::run_search(const std::vector<double>& p_start_solution,
   return 0;
 }
 
+bool Local_Search::explore_neighbor(
+    std::vector<Neighbor>& p_explore_neighbors)
+{
+  assert(!p_explore_neighbors.empty());
+  bool validate_selected_move = m_scoring.has_neighbor_callback();
+  reset_op(true);
+  for (auto& neighbor : p_explore_neighbors)
+  {
+    m_neighbor_ctx.clear_ops();
+    if (&neighbor == &p_explore_neighbors.back())
+    {
+      reset_op(false);
+      m_weight.update(m_weight_ctx);
+    }
+    neighbor.explore(m_neighbor_ctx);
+    const bool user_defined = neighbor.is_user_defined();
+    if (user_defined)
+    {
+      validate_selected_move = true;
+      if (m_op_size > m_op_var_idxs.size() ||
+          m_op_size > m_op_var_deltas.size())
+      {
+        throw Solver_Error(
+            "neighbor callback returned inconsistent operation arrays");
+      }
+    }
+    else
+      assert(m_op_size <= m_op_var_idxs.size() &&
+             m_op_size <= m_op_var_deltas.size());
+    for (size_t op_idx = 0; op_idx < m_op_size; ++op_idx)
+    {
+      if (user_defined && m_op_var_idxs[op_idx] >= m_var_num)
+      {
+        throw Solver_Error(
+            "neighbor callback variable index is out of range: " +
+            std::to_string(m_op_var_idxs[op_idx]));
+      }
+      m_scoring.score_neighbor(
+          m_scoring_ctx, m_op_var_idxs[op_idx], m_op_var_deltas[op_idx]);
+    }
+    if (m_best_neighbor_score > 0)
+      break;
+  }
+  return validate_selected_move;
+}
+
 bool Local_Search::finalize_result()
 {
   if (m_is_unbounded || !m_is_found_feasible || verify_solution())
@@ -145,7 +190,7 @@ void Local_Search::output_result() const
   else
   {
     printf("o best objective: %.17g\n", get_obj_value());
-    if (m_sol_path != "")
+    if (!m_sol_path.empty())
       write_sol();
   }
 }
@@ -474,7 +519,7 @@ void Local_Search::write_sol() const
   for (size_t var_idx = 0; var_idx < m_var_num; var_idx++)
   {
     const auto& model_var = m_model_manager->var(var_idx);
-    if (m_var_best_value[var_idx])
+    if (m_var_best_value[var_idx] != 0.0)
       fprintf(sol_file,
               "%-50s        %.*g\n",
               model_var.name().c_str(),
@@ -621,14 +666,7 @@ void Local_Search::init_data()
   for (size_t con_idx = 1; con_idx < m_con_num; con_idx++)
     m_con_constant[con_idx] = m_model_manager->con(con_idx).rhs();
   if (m_explore_neighbor_list.empty())
-  {
-    m_explore_neighbor_list = {
-        Neighbor("unsat_mtm_bm", m_bms_unsat_con, m_bms_mtm_unsat_op),
-        Neighbor("sat_mtm", m_bms_sat_con, m_bms_mtm_sat_op),
-        Neighbor("flip", SIZE_MAX, m_bms_flip_op),
-        Neighbor("easy", SIZE_MAX, m_bms_easy_op),
-        Neighbor("unsat_mtm_bm_random", SIZE_MAX, m_bms_random_op)};
-  }
+    reset_default_neighbor_list();
 }
 
 template <typename Accumulator>
@@ -662,31 +700,14 @@ bool Local_Search::solve_objective_only_impl()
           value = 0.0;
       }
     }
-    else if (coeff > 0)
-    {
-      double lower = model_var.lower_bound();
-      if (is_neg_inf_bound(lower) || is_pos_inf_bound(lower))
-      {
-        double bound_sign = is_pos_inf_bound(lower) ? 1.0 : -1.0;
-        double raw_sign = coeff * bound_sign;
-        m_is_unbounded = true;
-        m_is_found_feasible = false;
-        m_best_obj = std::copysign(std::numeric_limits<double>::infinity(),
-                                   raw_sign >= 0 ? 1.0 : -1.0);
-        m_con_activity[0] = m_best_obj;
-        m_min_unsat_con = 0;
-        publish_best_obj();
-        return true;
-      }
-      value = lower;
-    }
     else
     {
-      double upper = model_var.upper_bound();
-      if (is_pos_inf_bound(upper) || is_neg_inf_bound(upper))
+      const double bound = coeff > 0 ? model_var.lower_bound()
+                                     : model_var.upper_bound();
+      if (is_neg_inf_bound(bound) || is_pos_inf_bound(bound))
       {
-        double bound_sign = is_pos_inf_bound(upper) ? 1.0 : -1.0;
-        double raw_sign = coeff * bound_sign;
+        const double bound_sign = is_pos_inf_bound(bound) ? 1.0 : -1.0;
+        const double raw_sign = coeff * bound_sign;
         m_is_unbounded = true;
         m_is_found_feasible = false;
         m_best_obj = std::copysign(std::numeric_limits<double>::infinity(),
@@ -696,7 +717,7 @@ bool Local_Search::solve_objective_only_impl()
         publish_best_obj();
         return true;
       }
-      value = upper;
+      value = bound;
     }
     if (!m_model_manager->normalize_var_value(model_var, value))
     {
@@ -799,7 +820,7 @@ Local_Search::Local_Search(const Model_Manager* p_model_manager,
     : m_model_manager(p_model_manager),
       m_con_is_equality(p_model_manager->con_is_equality()),
       m_var_obj_cost(p_model_manager->var_obj_cost()),
-      m_is_keep_feas(false), m_strct_feas(true), m_break_eq_feas(false),
+      m_is_keep_feas(false), m_strict_feas(true), m_break_eq_feas(false),
       m_binary_op_stamp_token(0), m_activity_period(100000),
       m_activity_hits(0), m_activity_dirty(false),
       m_use_exact_double_activity(false), m_cur_step(0), m_tabu_base(4),
@@ -865,9 +886,8 @@ Local_Search::Local_Search(const Model_Manager* p_model_manager,
   m_rng.seed(0);
 }
 
-Local_Search::~Local_Search()
-{
-}
+Local_Search::~Local_Search() = default;
+
 void Local_Search::terminate() noexcept
 {
   m_terminated.store(true, std::memory_order_relaxed);
@@ -885,11 +905,6 @@ void Local_Search::set_sol_path(const std::string& p_sol_path)
 
 void Local_Search::set_random_seed(uint32_t p_seed)
 {
-  if (p_seed == 0)
-  {
-    m_rng.seed(0);
-    return;
-  }
   m_rng.seed(p_seed);
 }
 
@@ -1018,7 +1033,6 @@ void Local_Search::add_custom_neighbor(const std::string& p_neighbor_name,
 
 void Local_Search::reset_default_neighbor_list()
 {
-  m_explore_neighbor_list.clear();
   m_explore_neighbor_list = {
       Neighbor("unsat_mtm_bm", m_bms_unsat_con, m_bms_mtm_unsat_op),
       Neighbor("sat_mtm", m_bms_sat_con, m_bms_mtm_sat_op),

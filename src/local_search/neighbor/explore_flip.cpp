@@ -14,12 +14,10 @@
 #include "neighbor.h"
 #include <cassert>
 #include <cstddef>
-#include <cstdio>
-#include <vector>
 
 void Neighbor::explore_flip(Neighbor_Ctx& p_ctx)
 {
-  if (p_ctx.m_shared.m_binary_idx_list.size() == 0 || m_bms_op == 0)
+  if (p_ctx.m_shared.m_binary_idx_list.empty() || m_bms_op == 0)
     return;
   size_t neighbor_size = 0;
   auto& neighbor_idxs = sample_idxs(

@@ -11,18 +11,14 @@
 
 =====================================================================================*/
 
-#include "../../utils/global_defs.h"
 #include "neighbor.h"
-#include <cmath>
 #include <cstddef>
-#include <cstdio>
 #include <random>
-#include <vector>
 
 
 void Neighbor::explore_unsat_random_bm(Neighbor_Ctx& p_ctx)
 {
-  if (p_ctx.m_shared.m_con_unsat_idxs.size() > 0)
+  if (!p_ctx.m_shared.m_con_unsat_idxs.empty())
   {
     std::uniform_int_distribution<size_t> dist(
         0, p_ctx.m_shared.m_con_unsat_idxs.size() - 1);
@@ -40,12 +36,7 @@ void Neighbor::explore_unsat_random_bm(Neighbor_Ctx& p_ctx)
             con_idx, term_idx, var_idx, p_ctx);
       if (tabu_latest(p_ctx, var_idx, delta))
         continue;
-      if (is_effectively_zero(
-              delta,
-              p_ctx.m_shared.m_model_manager.zero_tolerance()))
-        continue;
-      p_ctx.m_op_var_idxs.push_back(var_idx);
-      p_ctx.m_op_var_deltas.push_back(delta);
+      append_nonzero_op(p_ctx, var_idx, delta);
     }
   }
   auto& model_obj = p_ctx.m_shared.m_model_manager.obj();
@@ -58,12 +49,7 @@ void Neighbor::explore_unsat_random_bm(Neighbor_Ctx& p_ctx)
       double delta = breakthrough_operation(term_idx, var_idx, p_ctx);
       if (tabu_latest(p_ctx, var_idx, delta))
         continue;
-      if (is_effectively_zero(
-              delta,
-              p_ctx.m_shared.m_model_manager.zero_tolerance()))
-        continue;
-      p_ctx.m_op_var_idxs.push_back(var_idx);
-      p_ctx.m_op_var_deltas.push_back(delta);
+      append_nonzero_op(p_ctx, var_idx, delta);
     }
   p_ctx.m_op_size = sample_op(
       m_bms_op, p_ctx.m_op_var_idxs, p_ctx.m_op_var_deltas, p_ctx);

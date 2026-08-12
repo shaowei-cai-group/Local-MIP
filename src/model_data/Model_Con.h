@@ -13,6 +13,7 @@
 
 #pragma once
 #include "../utils/global_defs.h"
+#include <algorithm>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -151,12 +152,8 @@ inline const std::vector<double>& Model_Con::coeff_set() const
 
 inline bool Model_Con::has_type(Con_Type p_type) const
 {
-  for (const auto& type : m_types)
-  {
-    if (type == p_type)
-      return true;
-  }
-  return false;
+  return std::find(m_types.begin(), m_types.end(), p_type) !=
+         m_types.end();
 }
 
 inline const std::vector<Con_Type>& Model_Con::get_types() const

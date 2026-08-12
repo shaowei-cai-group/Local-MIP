@@ -13,7 +13,6 @@
 
 #pragma once
 #include "../utils/global_defs.h"
-#include <cmath>
 #include <cstddef>
 #include <string>
 #include <vector>

@@ -16,12 +16,12 @@
 #include "Model_Manager.h"
 #include "Model_Var.h"
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <numeric>
 #include <string>
 #include <utility>
@@ -37,16 +37,7 @@ Model_Manager::Model_Manager(double p_feas_tolerance,
 {
 }
 
-Model_Manager::~Model_Manager()
-{
-  m_var_idx_to_obj_idx.clear();
-  m_var_name_to_idx.clear();
-  m_var_list.clear();
-  m_con_list.clear();
-  m_con_name_to_idx.clear();
-  m_type_to_con_idx_list.clear();
-  m_type_to_con_idx_set.clear();
-}
+Model_Manager::~Model_Manager() = default;
 
 size_t Model_Manager::make_var(const std::string& p_name,
                                bool p_requires_integrality)
@@ -66,6 +57,16 @@ size_t Model_Manager::make_con(const std::string& p_name,
   if (inserted)
     m_con_list.emplace_back(p_name, iter->second, p_type);
   return iter->second;
+}
+
+void Model_Manager::add_term(size_t p_con_idx,
+                             size_t p_var_idx,
+                             double p_coeff)
+{
+  Model_Con& model_con = con(p_con_idx);
+  Model_Var& model_var = var(p_var_idx);
+  model_var.add_con(p_con_idx, model_con.term_num());
+  model_con.add_var(p_var_idx, p_coeff, model_var.term_num() - 1);
 }
 
 void Model_Manager::normalize_integral_bounds(Model_Var& p_var) const
@@ -218,8 +219,7 @@ bool Model_Manager::process_after_read()
       printf("c model is infeasible after bound tightening.\n");
       return false;
     }
-  m_type_to_con_idx_list.clear();
-  m_type_to_con_idx_set.clear();
+  std::unordered_map<Con_Type, size_t> con_type_counts;
   for (size_t con_idx = 1; con_idx < m_con_num; ++con_idx)
   {
     auto& con = m_con_list[con_idx];
@@ -235,11 +235,10 @@ bool Model_Manager::process_after_read()
     const auto& types = con.get_types();
     for (Con_Type type : types)
     {
-      m_type_to_con_idx_list[type].push_back(con_idx);
-      m_type_to_con_idx_set[type].insert(con_idx);
+      ++con_type_counts[type];
     }
   }
-  print_cons_type_summary();
+  print_cons_type_summary(con_type_counts);
   m_var_idx_to_obj_idx.resize(m_var_num, SIZE_MAX);
   m_var_obj_cost.resize(m_var_num, 0.0);
   const auto& model_obj = obj();
@@ -469,7 +468,7 @@ bool Model_Manager::global_propagation()
       set_var_type(model_var, Var_Type::fixed);
       fixed_idxs.push_back(model_var.idx());
     }
-  while (fixed_idxs.size() > 0)
+  while (!fixed_idxs.empty())
   {
     size_t delete_var_idx = fixed_idxs.back();
     fixed_idxs.pop_back();
@@ -563,10 +562,8 @@ void Model_Manager::append_negated_con(const Model_Con& p_source)
   for (size_t term_idx = 0; term_idx < term_num; ++term_idx)
   {
     const size_t var_idx = p_source.var_idx(term_idx);
-    Model_Var& var = m_var_list[var_idx];
     const double coeff = -p_source.coeff(term_idx);
-    var.add_con(new_con_idx, new_con.term_num());
-    new_con.add_var(var_idx, coeff, var.term_num() - 1);
+    add_term(new_con_idx, var_idx, coeff);
   }
 }
 
@@ -576,7 +573,7 @@ std::string Model_Manager::make_duplicate_constraint_name(
   const std::string suffix = "_linpeng";
   std::string candidate = p_base + suffix;
   size_t counter = 1;
-  while (m_con_name_to_idx.find(candidate) != m_con_name_to_idx.end())
+  while (m_con_name_to_idx.contains(candidate))
   {
     candidate = p_base + suffix + std::to_string(counter);
     counter++;
@@ -584,9 +581,10 @@ std::string Model_Manager::make_duplicate_constraint_name(
   return candidate;
 }
 
-void Model_Manager::print_cons_type_summary() const
+void Model_Manager::print_cons_type_summary(
+    const std::unordered_map<Con_Type, size_t>& p_type_counts) const
 {
-  static const std::vector<Con_Type> k_con_type_order = {
+  static constexpr std::array k_con_type_order = {
       Con_Type::empty,
       Con_Type::free,
       Con_Type::singleton,
@@ -605,65 +603,59 @@ void Model_Manager::print_cons_type_summary() const
       Con_Type::mixed_binary,
       Con_Type::general_equality,
       Con_Type::general_inequality};
-  std::vector<std::pair<std::string, size_t>> entries;
-  entries.reserve(k_con_type_order.size());
+  struct Column
+  {
+    std::string type;
+    std::string count;
+    size_t width;
+  };
+  std::vector<Column> columns;
+  columns.reserve(k_con_type_order.size());
   for (Con_Type type : k_con_type_order)
   {
-    auto iter = m_type_to_con_idx_list.find(type);
-    size_t count =
-        iter == m_type_to_con_idx_list.end() ? 0 : iter->second.size();
+    const auto iter = p_type_counts.find(type);
+    const size_t count = iter == p_type_counts.end() ? 0 : iter->second;
     if (count == 0)
       continue;
-    entries.emplace_back(con_type_str(type), count);
+    std::string type_name = con_type_str(type);
+    std::string count_value = std::to_string(count);
+    const size_t width = std::max(type_name.size(), count_value.size());
+    columns.push_back(
+        {std::move(type_name), std::move(count_value), width});
   }
-  if (entries.empty())
+  if (columns.empty())
     return;
   const std::string header_label = "Con Type";
   const std::string count_label = "Con Count";
-  std::vector<std::string> type_names;
-  type_names.reserve(entries.size());
-  std::vector<std::string> count_values;
-  count_values.reserve(entries.size());
-  std::vector<size_t> column_widths(entries.size() + 1, 0);
-  column_widths[0] = std::max(header_label.size(), count_label.size());
-  for (size_t idx = 0; idx < entries.size(); ++idx)
-  {
-    type_names.emplace_back(entries[idx].first);
-    count_values.emplace_back(std::to_string(entries[idx].second));
-    column_widths[idx + 1] =
-        std::max(type_names.back().size(), count_values.back().size());
-  }
-  auto print_border = [&column_widths]()
+  const size_t label_width =
+      std::max(header_label.size(), count_label.size());
+  auto print_border = [&]()
   {
     printf("c ");
-    for (size_t idx = 0; idx < column_widths.size(); ++idx)
+    auto print_column_border = [](size_t p_width)
     {
       printf("+");
-      for (size_t dash = 0; dash < column_widths[idx] + 2; ++dash)
+      for (size_t dash = 0; dash < p_width + 2; ++dash)
         printf("-");
-    }
+    };
+    print_column_border(label_width);
+    for (const Column& column : columns)
+      print_column_border(column.width);
     printf("+\n");
   };
   print_border();
-  printf("c | %-*s ",
-         static_cast<int>(column_widths[0]),
-         header_label.c_str());
-  for (size_t idx = 0; idx < type_names.size(); ++idx)
+  printf("c | %-*s ", static_cast<int>(label_width), header_label.c_str());
+  for (const Column& column : columns)
   {
-    printf("| %-*s ",
-           static_cast<int>(column_widths[idx + 1]),
-           type_names[idx].c_str());
+    printf("| %-*s ", static_cast<int>(column.width), column.type.c_str());
   }
   printf("|\n");
   print_border();
-  printf("c | %-*s ",
-         static_cast<int>(column_widths[0]),
-         count_label.c_str());
-  for (size_t idx = 0; idx < count_values.size(); ++idx)
+  printf("c | %-*s ", static_cast<int>(label_width), count_label.c_str());
+  for (const Column& column : columns)
   {
-    printf("| %-*s ",
-           static_cast<int>(column_widths[idx + 1]),
-           count_values[idx].c_str());
+    printf(
+        "| %-*s ", static_cast<int>(column.width), column.count.c_str());
   }
   printf("|\n");
   print_border();
@@ -673,237 +665,107 @@ void Model_Manager::classify_con(Model_Con& p_con)
 {
   const size_t term_count = p_con.term_num();
   const auto& coeffs = p_con.coeff_set();
-  const auto& var_idx_set = p_con.var_idx_set();
+  const auto& var_idxs = p_con.var_idx_set();
   const double rhs = p_con.rhs();
-  bool is_eq = p_con.is_equality();
-  bool is_leq = !is_eq;
+  const bool is_equality = p_con.is_equality();
+  const bool all_unit_coeffs =
+      !coeffs.empty() &&
+      std::all_of(
+          coeffs.begin(),
+          coeffs.end(),
+          [&](double p_coeff)
+          { return !(std::fabs(p_coeff - 1.0) > m_zero_tolerance); });
+  const bool all_neg_unit_coeffs =
+      !coeffs.empty() &&
+      std::all_of(
+          coeffs.begin(),
+          coeffs.end(),
+          [&](double p_coeff)
+          { return !(std::fabs(p_coeff + 1.0) > m_zero_tolerance); });
+  const bool rhs_is_integral =
+      std::fabs(rhs - std::round(rhs)) <= m_zero_tolerance;
+  const bool has_rhs_coefficient = std::any_of(
+      coeffs.begin(),
+      coeffs.end(),
+      [&](double p_coeff)
+      { return std::fabs(p_coeff - rhs) <= m_zero_tolerance; });
 
-  auto mark_type = [&](Con_Type type) { p_con.add_type(type); };
-
-  auto is_integral_value = [&](double value)
-  { return std::fabs(value - std::round(value)) <= m_zero_tolerance; };
-
-  auto is_all_unit_coeffs = [&](const std::vector<double>& coeffs)
+  bool all_binary = term_count > 0;
+  bool all_integral = term_count > 0;
+  bool has_binary = false;
+  bool has_real = false;
+  bool has_general_integer = false;
+  for (size_t var_idx : var_idxs)
   {
-    if (coeffs.empty())
-      return false;
-    for (double coeff : coeffs)
-      if (std::fabs(coeff - 1.0) > m_zero_tolerance)
-        return false;
-    return true;
-  };
-  bool l_is_all_unit_coeffs = is_all_unit_coeffs(coeffs);
+    const auto& var = m_var_list[var_idx];
+    const bool is_binary = var_is_binary(var);
+    const bool is_real = var.is_real();
+    const bool is_general_integer = var.is_general_integer();
+    all_binary &= is_binary;
+    all_integral &= !is_real;
+    has_binary |= is_binary;
+    has_real |= is_real;
+    has_general_integer |= !is_binary && is_general_integer;
+  }
 
-  auto is_all_neg_unit_coeffs = [&](const std::vector<double>& coeffs)
-  {
-    if (coeffs.empty())
-      return false;
-    for (double coeff : coeffs)
-      if (std::fabs(coeff + 1.0) > m_zero_tolerance)
-        return false;
-    return true;
-  };
-  bool l_is_all_neg_unit_coeffs = is_all_neg_unit_coeffs(coeffs);
+  if (term_count == 0)
+    p_con.add_type(Con_Type::empty);
+  if (!is_equality && k_inf <= rhs)
+    p_con.add_type(Con_Type::free);
+  assert(k_neg_inf <= rhs);
+  if (term_count == 1)
+    p_con.add_type(Con_Type::singleton);
+  if (is_equality && term_count == 2 &&
+      std::fabs(coeffs[0]) > m_zero_tolerance &&
+      std::fabs(coeffs[1]) > m_zero_tolerance)
+    p_con.add_type(Con_Type::aggregation);
 
-  auto has_coeff_equal_to =
-      [&](const std::vector<double>& coeffs, double target)
+  if (!is_equality && term_count == 2)
   {
-    for (double coeff : coeffs)
-      if (std::fabs(coeff - target) <= m_zero_tolerance)
-        return true;
-    return false;
-  };
+    const double coeff_a = coeffs[0];
+    const double coeff_b = coeffs[1];
+    const auto& var_a = m_var_list[var_idxs[0]];
+    const auto& var_b = m_var_list[var_idxs[1]];
+    const double max_coeff =
+        std::max(std::fabs(coeff_a), std::fabs(coeff_b));
+    if (max_coeff > m_zero_tolerance &&
+        std::fabs(std::fabs(coeff_a) - std::fabs(coeff_b)) <=
+            m_zero_tolerance &&
+        coeff_a * coeff_b < 0.0 && var_a.type() == var_b.type())
+      p_con.add_type(Con_Type::precedence);
+  }
 
-  struct VarTypeFlags
-  {
-    bool all_binary = true;
-    bool all_integral = true;
-    bool has_binary = false;
-    bool has_real = false;
-    bool has_general_integer = false;
-  };
-
-  auto analyze_var_types = [&]() -> VarTypeFlags
-  {
-    VarTypeFlags flags;
-    if (term_count == 0)
-    {
-      flags.all_binary = false;
-      flags.all_integral = false;
-      return flags;
-    }
-    for (size_t idx = 0; idx < term_count; ++idx)
-    {
-      const auto& var = m_var_list[var_idx_set[idx]];
-      const bool is_bin = var_is_binary(var);
-      const bool is_real = var.is_real();
-      const bool is_int = var.is_general_integer();
-      flags.all_binary &= is_bin;
-      flags.all_integral &= !is_real;
-      flags.has_binary |= is_bin;
-      flags.has_real |= is_real;
-      flags.has_general_integer |= (!is_bin && is_int);
-    }
-    return flags;
-  };
-  const VarTypeFlags var_flags = analyze_var_types();
-  const bool l_all_binary_variables = var_flags.all_binary;
-  const bool l_all_integral_variables = var_flags.all_integral;
-  const bool l_has_binary_variable = var_flags.has_binary;
-  const bool l_has_real_variable = var_flags.has_real;
-  const bool l_has_general_integer_variable =
-      var_flags.has_general_integer;
-  auto classify_empty = [&]()
-  {
-    if (term_count == 0)
-      mark_type(Con_Type::empty);
-  };
-
-  auto classify_free = [&]()
-  {
-    if (is_leq && k_inf <= rhs)
-      mark_type(Con_Type::free);
-    assert(k_neg_inf <= rhs);
-  };
-
-  auto classify_singleton = [&]()
-  {
-    if (term_count == 1)
-      mark_type(Con_Type::singleton);
-  };
-
-  auto classify_aggregation = [&]()
-  {
-    if (is_eq && term_count == 2 &&
-        std::fabs(coeffs[0]) > m_zero_tolerance &&
-        std::fabs(coeffs[1]) > m_zero_tolerance)
-      mark_type(Con_Type::aggregation);
-  };
-
-  auto classify_precedence = [&]()
-  {
-    if (is_leq && term_count == 2)
-    {
-      const double coeff_a = coeffs[0];
-      const double coeff_b = coeffs[1];
-      const auto& var_a = m_var_list[var_idx_set[0]];
-      const auto& var_b = m_var_list[var_idx_set[1]];
-      const double s = std::max(std::fabs(coeff_a), std::fabs(coeff_b));
-      if (s > m_zero_tolerance &&
-          std::fabs(std::fabs(coeff_a) - std::fabs(coeff_b)) <=
-              m_zero_tolerance &&
-          coeff_a * coeff_b < 0.0 && var_a.type() == var_b.type())
-        mark_type(Con_Type::precedence);
-    }
-  };
-
-  auto classify_var_bound = [&]()
-  {
-    if (is_leq && term_count == 2 && l_has_binary_variable)
-      mark_type(Con_Type::var_bound);
-  };
-
-  auto classify_set_partitioning = [&]()
-  {
-    if (is_eq && term_count > 0 && l_all_binary_variables &&
-        l_is_all_unit_coeffs && std::fabs(rhs - 1.0) <= m_zero_tolerance)
-      mark_type(Con_Type::set_partitioning);
-  };
-
-  auto classify_set_packing = [&]()
-  {
-    if (is_leq && term_count > 0 && l_all_binary_variables &&
-        l_is_all_unit_coeffs && std::fabs(rhs - 1.0) <= m_zero_tolerance)
-      mark_type(Con_Type::set_packing);
-  };
-
-  auto classify_set_covering = [&]()
-  {
-    if (is_leq && term_count > 0 && l_all_binary_variables &&
-        l_is_all_neg_unit_coeffs &&
-        std::fabs(rhs + 1.0) <= m_zero_tolerance)
-      mark_type(Con_Type::set_covering);
-  };
-
-  auto classify_cardinality = [&]()
-  {
-    if (is_eq && term_count > 0 && l_all_binary_variables &&
-        l_is_all_unit_coeffs && is_integral_value(rhs) &&
-        rhs >= 2.0 - m_zero_tolerance)
-      mark_type(Con_Type::cardinality);
-  };
-
-  auto classify_invariant_knapsack = [&]()
-  {
-    if (is_leq && term_count > 0 && l_all_binary_variables &&
-        l_is_all_unit_coeffs && is_integral_value(rhs) &&
-        rhs >= 2.0 - m_zero_tolerance)
-      mark_type(Con_Type::invariant_knapsack);
-  };
-
-  auto classify_equation_knapsack = [&]()
-  {
-    if (is_eq && term_count > 0 && l_all_binary_variables &&
-        is_integral_value(rhs) && rhs >= 2.0 - m_zero_tolerance)
-      mark_type(Con_Type::equation_knapsack);
-  };
-
-  auto classify_bin_packing = [&]()
-  {
-    if (is_leq && term_count > 0 && l_all_binary_variables &&
-        is_integral_value(rhs) && rhs >= 2.0 - m_zero_tolerance &&
-        has_coeff_equal_to(coeffs, rhs))
-      mark_type(Con_Type::bin_packing);
-  };
-
-  auto classify_knapsack = [&]()
-  {
-    if (is_leq && term_count > 0 && l_all_binary_variables &&
-        is_integral_value(rhs) && rhs >= 2.0 - m_zero_tolerance)
-      mark_type(Con_Type::knapsack);
-  };
-
-  auto classify_integer_knapsack = [&]()
-  {
-    if (is_leq && term_count > 0 && l_all_integral_variables &&
-        is_integral_value(rhs) && l_has_general_integer_variable)
-      mark_type(Con_Type::integer_knapsack);
-  };
-
-  auto classify_mixed_binary = [&]()
-  {
-    if (term_count > 0 && l_has_binary_variable && l_has_real_variable &&
-        !l_has_general_integer_variable)
-      mark_type(Con_Type::mixed_binary);
-  };
-
-  auto classify_general_equality = [&]()
-  {
-    if (is_eq)
-      mark_type(Con_Type::general_equality);
-  };
-
-  auto classify_general_inequality = [&]()
-  {
-    if (!is_eq)
-      mark_type(Con_Type::general_inequality);
-  };
-  classify_empty();
-  classify_free();
-  classify_singleton();
-  classify_aggregation();
-  classify_precedence();
-  classify_var_bound();
-  classify_set_partitioning();
-  classify_set_packing();
-  classify_set_covering();
-  classify_cardinality();
-  classify_invariant_knapsack();
-  classify_equation_knapsack();
-  classify_bin_packing();
-  classify_knapsack();
-  classify_integer_knapsack();
-  classify_mixed_binary();
-  classify_general_equality();
-  classify_general_inequality();
+  if (!is_equality && term_count == 2 && has_binary)
+    p_con.add_type(Con_Type::var_bound);
+  if (is_equality && all_binary && all_unit_coeffs &&
+      std::fabs(rhs - 1.0) <= m_zero_tolerance)
+    p_con.add_type(Con_Type::set_partitioning);
+  if (!is_equality && all_binary && all_unit_coeffs &&
+      std::fabs(rhs - 1.0) <= m_zero_tolerance)
+    p_con.add_type(Con_Type::set_packing);
+  if (!is_equality && all_binary && all_neg_unit_coeffs &&
+      std::fabs(rhs + 1.0) <= m_zero_tolerance)
+    p_con.add_type(Con_Type::set_covering);
+  if (is_equality && all_binary && all_unit_coeffs && rhs_is_integral &&
+      rhs >= 2.0 - m_zero_tolerance)
+    p_con.add_type(Con_Type::cardinality);
+  if (!is_equality && all_binary && all_unit_coeffs && rhs_is_integral &&
+      rhs >= 2.0 - m_zero_tolerance)
+    p_con.add_type(Con_Type::invariant_knapsack);
+  if (is_equality && all_binary && rhs_is_integral &&
+      rhs >= 2.0 - m_zero_tolerance)
+    p_con.add_type(Con_Type::equation_knapsack);
+  if (!is_equality && all_binary && rhs_is_integral &&
+      rhs >= 2.0 - m_zero_tolerance && has_rhs_coefficient)
+    p_con.add_type(Con_Type::bin_packing);
+  if (!is_equality && all_binary && rhs_is_integral &&
+      rhs >= 2.0 - m_zero_tolerance)
+    p_con.add_type(Con_Type::knapsack);
+  if (!is_equality && all_integral && rhs_is_integral &&
+      has_general_integer)
+    p_con.add_type(Con_Type::integer_knapsack);
+  if (has_binary && has_real && !has_general_integer)
+    p_con.add_type(Con_Type::mixed_binary);
+  p_con.add_type(is_equality ? Con_Type::general_equality
+                             : Con_Type::general_inequality);
 }

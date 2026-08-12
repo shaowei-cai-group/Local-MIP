@@ -48,7 +48,7 @@ int Model_API::add_var(const std::string& p_name,
     fprintf(stderr, "Error: Variable name cannot be empty\n");
     return -1;
   }
-  if (m_var_name_to_idx.find(p_name) != m_var_name_to_idx.end())
+  if (m_var_name_to_idx.contains(p_name))
   {
     fprintf(
         stderr, "Error: Variable '%s' already exists\n", p_name.c_str());
@@ -63,13 +63,7 @@ int Model_API::add_var(const std::string& p_name,
   }
   int var_idx = static_cast<int>(m_vars.size());
   m_var_name_to_idx[p_name] = var_idx;
-  VarData var_data;
-  var_data.m_name = p_name;
-  var_data.m_lb = p_lb;
-  var_data.m_ub = p_ub;
-  var_data.m_cost = p_cost;
-  var_data.m_type = p_type;
-  m_vars.push_back(var_data);
+  m_vars.push_back({p_name, p_lb, p_ub, p_cost, p_type});
   return var_idx;
 }
 
@@ -80,7 +74,7 @@ bool Model_API::set_cost(int p_col, double p_cost)
     fprintf(stderr, "Error: Invalid variable index %d\n", p_col);
     return false;
   }
-  m_vars[p_col].m_cost = p_cost;
+  m_vars[static_cast<size_t>(p_col)].m_cost = p_cost;
   return true;
 }
 
@@ -123,13 +117,8 @@ int Model_API::add_con(double p_lb,
             p_ub);
     return -1;
   }
-  ConData con_data;
-  con_data.m_lb = p_lb;
-  con_data.m_ub = p_ub;
-  con_data.m_var_indices = p_cols;
-  con_data.m_coefs = p_coefs;
   int con_idx = static_cast<int>(m_cons.size());
-  m_cons.push_back(con_data);
+  m_cons.push_back({p_lb, p_ub, p_cols, p_coefs});
   return con_idx;
 }
 
@@ -145,6 +134,7 @@ int Model_API::add_con(double p_lb,
     return -1;
   }
   std::vector<int> var_indices;
+  var_indices.reserve(p_names.size());
   for (const auto& name : p_names)
   {
     int var_idx = get_var_idx(name);
@@ -170,8 +160,9 @@ bool Model_API::add_var_to_con(int p_row, int p_col, double p_coef)
     fprintf(stderr, "Error: Invalid variable index %d\n", p_col);
     return false;
   }
-  m_cons[p_row].m_var_indices.push_back(p_col);
-  m_cons[p_row].m_coefs.push_back(p_coef);
+  ConData& con = m_cons[static_cast<size_t>(p_row)];
+  con.m_var_indices.push_back(p_col);
+  con.m_coefs.push_back(p_coef);
   return true;
 }
 
@@ -195,7 +186,7 @@ bool Model_API::set_integrality(int p_col, Var_Type p_type)
     fprintf(stderr, "Error: Invalid variable index %d\n", p_col);
     return false;
   }
-  m_vars[p_col].m_type = p_type;
+  m_vars[static_cast<size_t>(p_col)].m_type = p_type;
   return true;
 }
 
@@ -234,17 +225,14 @@ void Model_API::inner_add_vars_to_cons(
     Model_Manager& p_model_manager,
     const std::vector<size_t>& api_to_mgr_idx) const
 {
-  auto& model_con = p_model_manager.con(con_idx);
   for (size_t j = 0; j < con.m_var_indices.size(); ++j)
   {
-    int api_idx = con.m_var_indices[j];
-    double coef = con.m_coefs[j];
+    const int api_idx = con.m_var_indices[j];
+    const double coef = con.m_coefs[j];
     if (is_effectively_zero(coef, p_model_manager.zero_tolerance()))
       continue;
-    size_t mgr_idx = api_to_mgr_idx[api_idx];
-    auto& model_var = p_model_manager.var(mgr_idx);
-    model_var.add_con(con_idx, model_con.term_num());
-    model_con.add_var(mgr_idx, coef, model_var.term_num() - 1);
+    const size_t mgr_idx = api_to_mgr_idx[static_cast<size_t>(api_idx)];
+    p_model_manager.add_term(con_idx, mgr_idx, coef);
   }
 }
 
@@ -273,19 +261,10 @@ void Model_API::populate_model(Model_Manager& p_model_manager) const
     const double upper_bound = var.m_ub >= k_inf ? k_inf : var.m_ub;
     p_model_manager.set_var_lower_bound(model_var, lower_bound);
     p_model_manager.set_var_upper_bound(model_var, upper_bound);
-    if (var.m_type == Var_Type::binary)
-      p_model_manager.set_var_type(model_var, Var_Type::binary);
-    else if (var.m_type == Var_Type::general_integer)
-      p_model_manager.set_var_type(model_var, Var_Type::general_integer);
-    else if (var.m_type == Var_Type::real)
-      p_model_manager.set_var_type(model_var, Var_Type::real);
-    else if (var.m_type == Var_Type::fixed)
-      p_model_manager.set_var_type(model_var, Var_Type::fixed);
+    p_model_manager.set_var_type(model_var, var.m_type);
     if (std::fabs(var.m_cost) > p_model_manager.zero_tolerance())
     {
-      auto& obj_con = p_model_manager.con(obj_idx);
-      model_var.add_con(obj_idx, obj_con.term_num());
-      obj_con.add_var(var_idx, var.m_cost, model_var.term_num() - 1);
+      p_model_manager.add_term(obj_idx, var_idx, var.m_cost);
     }
   }
   for (size_t i = 0; i < m_cons.size(); ++i)

@@ -25,8 +25,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -55,14 +53,10 @@ void validate_heuristic_count(size_t p_value,
 Local_MIP::Local_MIP(
     std::unique_ptr<Model_Manager> p_owned_model_manager,
     std::shared_ptr<const Prepared_Model> p_prepared_model)
-    : m_model_file(""), m_param_set_file(""), m_start_sol_path(""),
-      m_time_limit(10.0), m_run_start(), m_lifecycle_mutex(),
-      m_run_started(false), m_timeout_thread(), m_timeout_mutex(),
-      m_timeout_cv(), m_cancel_timeout(true),
+    : m_time_limit(10.0), m_run_started(false), m_cancel_timeout(true),
       m_user_termination_requested(false), m_log_obj_enabled(true),
       m_owned_model_manager(std::move(p_owned_model_manager)),
-      m_prepared_model(std::move(p_prepared_model)),
-      m_local_search(nullptr)
+      m_prepared_model(std::move(p_prepared_model))
 {
   if (m_owned_model_manager == nullptr && m_prepared_model == nullptr)
     throw std::invalid_argument("prepared model cannot be null");
@@ -86,9 +80,7 @@ Local_MIP::Local_MIP(
 
 Local_MIP::~Local_MIP()
 {
-  request_timeout_stop();
-  if (m_timeout_thread.joinable())
-    m_timeout_thread.join();
+  stop_timeout_thread();
 }
 
 void Local_MIP::set_model_file(const std::string& p_model_file)
@@ -598,12 +590,6 @@ void Local_MIP::run_impl()
     std::lock_guard<std::mutex> lock(m_timeout_mutex);
     m_cancel_timeout = false;
   }
-  auto stop_background_tasks = [this]()
-  {
-    request_timeout_stop();
-    if (m_timeout_thread.joinable())
-      m_timeout_thread.join();
-  };
   try
   {
     m_timeout_thread = std::thread(&Local_MIP::timeout_handler, this);
@@ -611,10 +597,10 @@ void Local_MIP::run_impl()
   }
   catch (...)
   {
-    stop_background_tasks();
+    stop_timeout_thread();
     throw;
   }
-  stop_background_tasks();
+  stop_timeout_thread();
   if (m_user_termination_requested.load(std::memory_order_relaxed))
   {
     printf("c [%10.2lf] local search is terminated by user.\n",
@@ -676,6 +662,13 @@ void Local_MIP::request_timeout_stop()
     m_cancel_timeout = true;
   }
   m_timeout_cv.notify_all();
+}
+
+void Local_MIP::stop_timeout_thread()
+{
+  request_timeout_stop();
+  if (m_timeout_thread.joinable())
+    m_timeout_thread.join();
 }
 
 double Local_MIP::elapsed_seconds() const

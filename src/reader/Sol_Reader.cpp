@@ -13,6 +13,8 @@
 
 =====================================================================================*/
 
+#include "../model_data/Model_Manager.h"
+#include "../utils/string_utils.h"
 #include "Sol_Reader.h"
 #include <cctype>
 #include <cerrno>
@@ -56,7 +58,7 @@ Sol_Read_Result Sol_Reader::read(const std::string& p_sol_file,
     if (comment_pos != std::string::npos)
       line = line.substr(0, comment_pos);
 
-    line = trim(line);
+    line = string_utils::trim_copy(line);
     if (line.empty())
       continue;
 
@@ -136,24 +138,6 @@ Sol_Read_Result Sol_Reader::read(const std::string& p_sol_file,
   }
 
   return {true, loaded_var_num, unknown_var_num, ""};
-}
-
-std::string Sol_Reader::trim(const std::string& p_text)
-{
-  size_t first = 0;
-  while (first < p_text.size() &&
-         std::isspace(static_cast<unsigned char>(p_text[first])))
-    ++first;
-
-  if (first == p_text.size())
-    return "";
-
-  size_t last = p_text.size() - 1;
-  while (last > first &&
-         std::isspace(static_cast<unsigned char>(p_text[last])))
-    --last;
-
-  return p_text.substr(first, last - first + 1);
 }
 
 bool Sol_Reader::parse_value(const std::string& p_text, double& p_value)

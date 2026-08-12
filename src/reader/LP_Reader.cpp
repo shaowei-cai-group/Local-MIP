@@ -12,17 +12,16 @@
 =====================================================================================*/
 
 #include "../model_data/Model_Con.h"
+#include "../model_data/Model_Manager.h"
 #include "../model_data/Model_Var.h"
 #include "../utils/global_defs.h"
 #include "../utils/solver_error.h"
+#include "../utils/string_utils.h"
 #include "LP_Reader.h"
-#include <algorithm>
 #include <cctype>
 #include <chrono>
-#include <cmath>
 #include <cstddef>
 #include <cstdio>
-#include <cstdlib>
 #include <fstream>
 #include <functional>
 #include <sstream>
@@ -288,16 +287,6 @@ struct Linear_Expression
   double constant = 0.0;
 };
 
-std::string to_upper(std::string p_value)
-{
-  std::transform(p_value.begin(),
-                 p_value.end(),
-                 p_value.begin(),
-                 [](unsigned char ch)
-                 { return static_cast<char>(std::toupper(ch)); });
-  return p_value;
-}
-
 bool is_section_keyword(const std::string& p_upper)
 {
   static const std::unordered_set<std::string> k_keywords = {"SUBJECT",
@@ -318,7 +307,7 @@ bool is_section_keyword(const std::string& p_upper)
                                                              "INTEGERS",
                                                              "INT",
                                                              "END"};
-  return k_keywords.count(p_upper) > 0;
+  return k_keywords.contains(p_upper);
 }
 
 bool is_constraints_keyword(const std::string& p_upper)
@@ -344,10 +333,49 @@ bool is_binary_keyword(const std::string& p_upper)
   return p_upper == "BINARY" || p_upper == "BINARIES" || p_upper == "BIN";
 }
 
+bool has_section_item(Tokenizer& p_tokenizer)
+{
+  while (true)
+  {
+    Token token = p_tokenizer.peek();
+    if (token.type == Token_Type::end)
+      return false;
+    if (token.type == Token_Type::identifier &&
+        is_section_keyword(string_utils::to_upper_copy(token.text)))
+      return false;
+    if (token.type != Token_Type::semicolon)
+      return true;
+    p_tokenizer.next();
+  }
+}
+
 [[noreturn]] void parse_error(const std::string& p_message)
 {
   printf("o invalid LP file: %s\n", p_message.c_str());
   throw Solver_Error(p_message.c_str());
+}
+
+void append_lp_line(std::string& p_result,
+                    const char* p_line,
+                    size_t p_length)
+{
+  size_t comment_pos = p_length;
+  for (size_t idx = 0; idx + 1 < p_length; ++idx)
+  {
+    if (p_line[idx] == '/' && p_line[idx + 1] == '/')
+    {
+      comment_pos = idx;
+      break;
+    }
+  }
+  size_t first_nonspace = 0;
+  while (first_nonspace < comment_pos &&
+         std::isspace(static_cast<unsigned char>(p_line[first_nonspace])))
+    ++first_nonspace;
+  if (first_nonspace < comment_pos && p_line[first_nonspace] == '\\')
+    return;
+  p_result.append(p_line, comment_pos);
+  p_result.push_back('\n');
 }
 
 std::string preprocess_lp_content(const std::string& p_raw)
@@ -379,65 +407,14 @@ std::string preprocess_lp_content(const std::string& p_raw)
     }
     if (p_raw[idx] == '\n')
     {
-      size_t line_length = idx - line_start;
-      if (line_length > 0)
-      {
-        const char* line_ptr = p_raw.data() + line_start;
-        size_t comment_pos = line_length;
-        for (size_t i = 0; i + 1 < line_length; ++i)
-        {
-          if (line_ptr[i] == '/' && line_ptr[i + 1] == '/')
-          {
-            comment_pos = i;
-            break;
-          }
-        }
-        size_t first_nonspace = 0;
-        while (first_nonspace < comment_pos &&
-               std::isspace(
-                   static_cast<unsigned char>(line_ptr[first_nonspace])))
-          ++first_nonspace;
-        if (first_nonspace < comment_pos &&
-            line_ptr[first_nonspace] == '\\')
-        {
-          line_start = idx + 1;
-          continue;
-        }
-        result.append(line_ptr, comment_pos);
-      }
-
-      result.push_back('\n');
+      append_lp_line(
+          result, p_raw.data() + line_start, idx - line_start);
       line_start = idx + 1;
-      continue;
     }
   }
   if (line_start < size && !in_block_comment)
-  {
-    size_t line_length = size - line_start;
-    const char* line_ptr = p_raw.data() + line_start;
-
-    size_t comment_pos = line_length;
-    for (size_t i = 0; i + 1 < line_length; ++i)
-    {
-      if (line_ptr[i] == '/' && line_ptr[i + 1] == '/')
-      {
-        comment_pos = i;
-        break;
-      }
-    }
-
-    size_t first_nonspace = 0;
-    while (
-        first_nonspace < comment_pos &&
-        std::isspace(static_cast<unsigned char>(line_ptr[first_nonspace])))
-      ++first_nonspace;
-
-    if (first_nonspace >= comment_pos || line_ptr[first_nonspace] != '\\')
-    {
-      result.append(line_ptr, comment_pos);
-      result.push_back('\n');
-    }
-  }
+    append_lp_line(
+        result, p_raw.data() + line_start, size - line_start);
   if (in_block_comment)
   {
     printf("o Warning: unclosed block comment in LP file\n");
@@ -478,7 +455,8 @@ Linear_Expression parse_linear_expression(
       pending_sign = 1.0;
       Token next_token = p_tokenizer.peek();
       if (next_token.type == Token_Type::identifier &&
-          !is_section_keyword(to_upper(next_token.text)))
+          !is_section_keyword(
+              string_utils::to_upper_copy(next_token.text)))
       {
         next_token = p_tokenizer.next();
         expression.terms.emplace_back(next_token.text, coeff);
@@ -490,7 +468,7 @@ Linear_Expression parse_linear_expression(
     if (token.type == Token_Type::identifier)
     {
       token = p_tokenizer.next();
-      std::string upper = to_upper(token.text);
+      std::string upper = string_utils::to_upper_copy(token.text);
       if (is_section_keyword(upper))
       {
         p_tokenizer.push_back(token);
@@ -535,7 +513,7 @@ double parse_numeric_value(Tokenizer& p_tokenizer)
     }
     if (token.type == Token_Type::identifier)
     {
-      std::string upper = to_upper(token.text);
+      std::string upper = string_utils::to_upper_copy(token.text);
       if (upper == "INF" || upper == "INFINITY")
         return sign * k_inf;
       parse_error("invalid numeric value: " + token.text);
@@ -590,7 +568,7 @@ void LP_Reader::read(const char* p_file_name)
     {
       parse_error("unexpected token outside of sections");
     }
-    std::string upper = to_upper(token.text);
+    std::string upper = string_utils::to_upper_copy(token.text);
     if (is_constraints_keyword(upper))
     {
       parse_constraints(tokenizer);
@@ -622,7 +600,7 @@ void LP_Reader::read(const char* p_file_name)
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       end_time - start_time);
   printf("c reading lp file takes %.2lf seconds.\n",
-         duration.count() / 1000.0);
+         static_cast<double>(duration.count()) / 1000.0);
 }
 
 void LP_Reader::parse_objective(Tokenizer& p_tokenizer)
@@ -630,7 +608,7 @@ void LP_Reader::parse_objective(Tokenizer& p_tokenizer)
   Token sense_token = p_tokenizer.next();
   if (sense_token.type != Token_Type::identifier)
     parse_error("LP objective must start with MINIMIZE or MAXIMIZE");
-  std::string sense = to_upper(sense_token.text);
+  std::string sense = string_utils::to_upper_copy(sense_token.text);
   if (sense == "MIN" || sense == "MINIMIZE" || sense == "MINIMUM")
   {
     // default is minimize
@@ -639,7 +617,7 @@ void LP_Reader::parse_objective(Tokenizer& p_tokenizer)
     m_model_manager->setup_max();
   else
     parse_error("unexpected objective sense: " + sense_token.text);
-  std::string obj_name = "";
+  std::string obj_name;
   Token next_token = p_tokenizer.peek();
   if (next_token.type == Token_Type::identifier)
   {
@@ -658,7 +636,7 @@ void LP_Reader::parse_objective(Tokenizer& p_tokenizer)
   {
     if (token.type != Token_Type::identifier)
       return false;
-    std::string upper = to_upper(token.text);
+    std::string upper = string_utils::to_upper_copy(token.text);
     return is_section_keyword(upper);
   };
   Linear_Expression obj_expr =
@@ -671,13 +649,13 @@ void LP_Reader::parse_objective(Tokenizer& p_tokenizer)
 void LP_Reader::parse_constraints(Tokenizer& p_tokenizer)
 {
   Token keyword = p_tokenizer.next();
-  std::string upper = to_upper(keyword.text);
+  std::string upper = string_utils::to_upper_copy(keyword.text);
   if (upper == "SUBJECT")
   {
     Token maybe_to = p_tokenizer.peek();
     if (maybe_to.type == Token_Type::identifier)
     {
-      std::string next_upper = to_upper(maybe_to.text);
+      std::string next_upper = string_utils::to_upper_copy(maybe_to.text);
       if (next_upper == "TO")
         p_tokenizer.next();
     }
@@ -687,7 +665,8 @@ void LP_Reader::parse_constraints(Tokenizer& p_tokenizer)
     Token maybe_that = p_tokenizer.peek();
     if (maybe_that.type == Token_Type::identifier)
     {
-      std::string next_upper = to_upper(maybe_that.text);
+      std::string next_upper =
+          string_utils::to_upper_copy(maybe_that.text);
       if (next_upper == "THAT")
         p_tokenizer.next();
     }
@@ -699,22 +678,8 @@ void LP_Reader::parse_constraints(Tokenizer& p_tokenizer)
   }
   else
     parse_error("invalid constraint section keyword: " + keyword.text);
-  while (true)
+  while (has_section_item(p_tokenizer))
   {
-    Token token = p_tokenizer.peek();
-    if (token.type == Token_Type::end)
-      break;
-    if (token.type == Token_Type::identifier)
-    {
-      std::string section_upper = to_upper(token.text);
-      if (is_section_keyword(section_upper))
-        break;
-    }
-    if (token.type == Token_Type::semicolon)
-    {
-      p_tokenizer.next();
-      continue;
-    }
     std::string con_name;
     Token possible_name = p_tokenizer.peek();
     if (possible_name.type == Token_Type::identifier)
@@ -762,24 +727,10 @@ void LP_Reader::parse_constraints(Tokenizer& p_tokenizer)
 
 void LP_Reader::parse_bounds(Tokenizer& p_tokenizer)
 {
-  Token keyword = p_tokenizer.next();
-  (void)keyword;
-  while (true)
+  p_tokenizer.next();
+  while (has_section_item(p_tokenizer))
   {
     Token token = p_tokenizer.peek();
-    if (token.type == Token_Type::end)
-      break;
-    if (token.type == Token_Type::identifier)
-    {
-      std::string upper = to_upper(token.text);
-      if (is_section_keyword(upper))
-        break;
-    }
-    if (token.type == Token_Type::semicolon)
-    {
-      p_tokenizer.next();
-      continue;
-    }
     if (token.type == Token_Type::number)
     {
       double first_value = parse_numeric_value(p_tokenizer);
@@ -828,7 +779,8 @@ void LP_Reader::parse_bounds(Tokenizer& p_tokenizer)
     Token next_token = p_tokenizer.peek();
     if (next_token.type == Token_Type::identifier)
     {
-      std::string keyword_upper = to_upper(next_token.text);
+      std::string keyword_upper =
+          string_utils::to_upper_copy(next_token.text);
       if (keyword_upper == "FREE")
       {
         p_tokenizer.next();
@@ -862,25 +814,10 @@ void LP_Reader::parse_bounds(Tokenizer& p_tokenizer)
 
 void LP_Reader::parse_integers(Tokenizer& p_tokenizer)
 {
-  Token keyword = p_tokenizer.next();
-  (void)keyword;
-  while (true)
+  p_tokenizer.next();
+  while (has_section_item(p_tokenizer))
   {
-    Token token = p_tokenizer.peek();
-    if (token.type == Token_Type::end)
-      break;
-    if (token.type == Token_Type::identifier)
-    {
-      std::string upper = to_upper(token.text);
-      if (is_section_keyword(upper))
-        break;
-    }
-    if (token.type == Token_Type::semicolon)
-    {
-      p_tokenizer.next();
-      continue;
-    }
-    token = p_tokenizer.next();
+    Token token = p_tokenizer.next();
     if (token.type != Token_Type::identifier)
       parse_error("invalid integer declaration");
     size_t var_idx = m_model_manager->make_var(token.text, false);
@@ -892,25 +829,10 @@ void LP_Reader::parse_integers(Tokenizer& p_tokenizer)
 
 void LP_Reader::parse_binaries(Tokenizer& p_tokenizer)
 {
-  Token keyword = p_tokenizer.next();
-  (void)keyword;
-  while (true)
+  p_tokenizer.next();
+  while (has_section_item(p_tokenizer))
   {
-    Token token = p_tokenizer.peek();
-    if (token.type == Token_Type::end)
-      break;
-    if (token.type == Token_Type::identifier)
-    {
-      std::string upper = to_upper(token.text);
-      if (is_section_keyword(upper))
-        break;
-    }
-    if (token.type == Token_Type::semicolon)
-    {
-      p_tokenizer.next();
-      continue;
-    }
-    token = p_tokenizer.next();
+    Token token = p_tokenizer.next();
     if (token.type != Token_Type::identifier)
       parse_error("invalid binary declaration");
     size_t var_idx = m_model_manager->make_var(token.text, false);
@@ -931,26 +853,13 @@ void LP_Reader::add_term(const std::string& p_con_name,
           p_coeff, m_model_manager->zero_tolerance()))
     return;
   size_t con_idx;
-  Model_Con* con;
-  if (p_con_name == m_model_manager->get_obj_name())
-  {
+  if (p_con_name.empty() ||
+      p_con_name == m_model_manager->get_obj_name())
     con_idx = 0;
-    con = &m_model_manager->con(0);
-  }
-  else if (p_con_name.empty())
-  {
-    con_idx = 0;
-    con = &m_model_manager->con(0);
-  }
   else
-  {
     con_idx = m_model_manager->con_idx(p_con_name);
-    con = &m_model_manager->con(con_idx);
-  }
   size_t var_idx = m_model_manager->make_var(p_var_name, false);
-  auto& var = m_model_manager->var(var_idx);
-  var.add_con(con_idx, con->term_num());
-  con->add_var(var_idx, p_coeff, var.term_num() - 1);
+  m_model_manager->add_term(con_idx, var_idx, p_coeff);
 }
 
 std::string LP_Reader::generate_constraint_name()

@@ -14,11 +14,10 @@
 #include "../../model_data/Model_Manager.h"
 #include "../../utils/global_defs.h"
 #include "../../utils/solver_error.h"
+#include "../../utils/string_utils.h"
 #include "../context/context.h"
 #include "start.h"
-#include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <random>
@@ -48,12 +47,7 @@ void Start::set_cbk(Start_Cbk p_start_cbk, void* p_user_data)
 
 void Start::set_method(const std::string& p_method_name)
 {
-  std::string method = p_method_name;
-  std::transform(method.begin(),
-                 method.end(),
-                 method.begin(),
-                 [](unsigned char ch)
-                 { return static_cast<char>(std::tolower(ch)); });
+  const std::string method = string_utils::to_lower_copy(p_method_name);
   if (method.empty() || method == "zero")
     m_default_method = Method::zero;
   else if (method == "random")

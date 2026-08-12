@@ -12,9 +12,10 @@
 =====================================================================================*/
 
 #pragma once
-#include "../model_data/Model_Manager.h"
 #include <cstddef>
 #include <string>
+
+class Model_Manager;
 
 namespace lp_internal
 {
